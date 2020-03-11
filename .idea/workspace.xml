@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="" />
+    <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/lcView.bash" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
   <component name="ProjectId" id="1Yw9TuYw7PI9DM092Zls1sRVKOL" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showExcludedFiles" value="true" />
@@ -15,7 +22,26 @@
   </component>
   <component name="PropertiesComponent">
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="lcView.bash" type="BashConfigurationType" factoryName="Bash">
+      <module name="LCDFT" />
+      <option name="INTERPRETER_OPTIONS" value="bash" />
+      <option name="INTERPRETER_PATH" value="/usr/bin/env" />
+      <option name="PROJECT_INTERPRETER" value="false" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/lcView.bash" />
+      <option name="PARAMETERS" value="" />
+      <method v="2" />
+    </configuration>
   </component>
   <component name="SvnConfiguration">
     <configuration />
@@ -39,6 +65,10 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="418" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583853999292" />
+    <state x="693" y="276" width="523" height="528" key="#lcView.bash" timestamp="1583934838023">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="693" y="276" width="523" height="528" key="#lcView.bash/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583934838023" />
     <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1583925423857">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

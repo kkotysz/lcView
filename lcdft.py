@@ -67,7 +67,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
     def state_changed(self):
         self.per_n = self.per + float(self.phase_slider.value())*1e-12
-        print(self.per_n)
+        # print(self.per_n)
         self.phase = (self.time % self.per_n) / self.per_n
         temp = zip(self.phase, self.flux)
         temp = sorted(temp)

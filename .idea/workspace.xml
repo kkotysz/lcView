@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/lcView.bash" beforeDir="false" afterPath="$PROJECT_DIR$/lcView.bash" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/lcdft.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

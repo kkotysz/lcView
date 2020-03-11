@@ -213,10 +213,10 @@
              <number>1</number>
             </property>
             <property name="maximum">
-             <number>999</number>
+             <number>1999</number>
             </property>
             <property name="singleStep">
-             <number>20</number>
+             <number>1</number>
             </property>
             <property name="value">
              <number>599</number>

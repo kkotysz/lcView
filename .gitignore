@@ -1,4 +1,11 @@
 fw.c
-lcdft.py
-README.md
-scripts
+lcf.data
+lcf.trf
+TIC150272131-s4-124s_lc3_fppt.dat
+TIC161617657-s4-124s_lc3_fppt.dat
+TIC167695608-s4-124s_lc3_fppt.dat
+TIC200440270-s4-124s_lc3_fppt.dat
+TIC224285325-s2-121s_lc3.dat
+TIC260161111-s4-124s_lc3_fppt.dat
+TIC274038922-s4-124s_lc3_fppt.dat
+TIC65435735-s4-124s_lc3_fppt.dat

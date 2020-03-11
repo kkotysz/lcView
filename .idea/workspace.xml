@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ProjectId" id="1Yw9TuYw7PI9DM092Zls1sRVKOL" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showExcludedFiles" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+  </component>
+  <component name="SvnConfiguration">
+    <configuration />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="" />
+      <created>1583842800155</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1583842800155</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="WindowStateProjectService">
+    <state x="555" y="201" width="800" height="677" key="#Inspections" timestamp="1583842947896">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="555" y="201" width="800" height="677" key="#Inspections/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583842947896" />
+    <state x="418" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1583853999292">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="418" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583853999292" />
+    <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1583925423857">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583925423857" />
+    <state x="471" y="175" key="SettingsEditor" timestamp="1583842956512">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="471" y="175" key="SettingsEditor/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583842956512" />
+    <state x="685" y="455" width="540" height="170" key="vcs.readOnlyHandler.ReadOnlyStatusDialog" timestamp="1583859028551">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="685" y="455" width="540" height="170" key="vcs.readOnlyHandler.ReadOnlyStatusDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583859028551" />
+  </component>
+</project>

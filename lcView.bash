@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-python3 lcdft.py
+python3 ./lcdft.py

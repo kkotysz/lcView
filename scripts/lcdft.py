@@ -8,7 +8,7 @@ import numpy as np
 from astropy import units as u
 from os import system
 import os
-from scripts.boxcar import smooth as bcsmooth
+from boxcar import smooth as bcsmooth
 
 dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1], '')
 qtCreatorFile = dir_path + "lcdft.ui"  # Enter file here.

@@ -2,8 +2,15 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/scripts/kzhya_ico-64.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/lcdft.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/lcdft.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lcView.bash" beforeDir="false" afterPath="$PROJECT_DIR$/lcView.bash" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lcdft.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/boxcar.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/boxcar.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lcdft.bash" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.bash" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lcdft.ui" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.ui" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -22,7 +29,7 @@
   </component>
   <component name="PropertiesComponent">
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/lcdft.py" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
   <component name="RecentsManager">
@@ -30,7 +37,7 @@
       <recent name="$PROJECT_DIR$" />
     </key>
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Python.lcdft">
     <configuration name="lcView.bash" type="BashConfigurationType" factoryName="Bash">
       <module name="LCDFT" />
       <option name="INTERPRETER_OPTIONS" value="bash" />
@@ -42,6 +49,31 @@
       <option name="PARAMETERS" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="lcdft" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+      <module name="LCDFT" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="/usr/bin/python3.6" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/lcdft.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Bash.lcView.bash" />
+      <item itemvalue="Python.lcdft" />
+    </list>
   </component>
   <component name="SvnConfiguration">
     <configuration />
@@ -54,33 +86,92 @@
       <option name="presentableId" value="Default" />
       <updated>1583842800155</updated>
     </task>
+    <task id="LOCAL-00001" summary="pycharm">
+      <created>1584001500124</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1584001500124</updated>
+    </task>
+    <task id="LOCAL-00002" summary="pycharm">
+      <created>1584001517011</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1584001517011</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="pycharm" />
+    <option name="LAST_COMMIT_MESSAGE" value="pycharm" />
   </component>
   <component name="WindowStateProjectService">
     <state x="555" y="201" width="800" height="677" key="#Inspections" timestamp="1583842947896">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="555" y="201" width="800" height="677" key="#Inspections/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583842947896" />
-    <state x="418" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1583853999292">
+    <state x="418" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1584002683692">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="418" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583853999292" />
+    <state x="418" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002683692" />
     <state x="693" y="276" width="523" height="528" key="#lcView.bash" timestamp="1583934838023">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="693" y="276" width="523" height="528" key="#lcView.bash/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583934838023" />
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584001499992">
+    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584001516946">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584001499992" />
-    <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1583925423857">
+    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584001516946" />
+    <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1584002673026">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583925423857" />
+    <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002673026" />
+    <state width="1899" height="356" key="GridCell.Tab.0.bottom" timestamp="1584002854340">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="356" key="GridCell.Tab.0.bottom/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002854340" />
+    <state width="1899" height="356" key="GridCell.Tab.0.center" timestamp="1584002854340">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="356" key="GridCell.Tab.0.center/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002854340" />
+    <state width="1899" height="356" key="GridCell.Tab.0.left" timestamp="1584002854340">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="356" key="GridCell.Tab.0.left/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002854340" />
+    <state width="1899" height="356" key="GridCell.Tab.0.right" timestamp="1584002854340">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="356" key="GridCell.Tab.0.right/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002854340" />
+    <state width="1899" height="356" key="GridCell.Tab.1.bottom" timestamp="1584002854341">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="356" key="GridCell.Tab.1.bottom/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002854341" />
+    <state width="1899" height="356" key="GridCell.Tab.1.center" timestamp="1584002854340">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="356" key="GridCell.Tab.1.center/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002854340" />
+    <state width="1899" height="356" key="GridCell.Tab.1.left" timestamp="1584002854340">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="356" key="GridCell.Tab.1.left/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002854340" />
+    <state width="1899" height="356" key="GridCell.Tab.1.right" timestamp="1584002854340">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="356" key="GridCell.Tab.1.right/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002854340" />
     <state x="471" y="175" key="SettingsEditor" timestamp="1583842956512">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="471" y="175" key="SettingsEditor/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583842956512" />
+    <state x="831" y="248" width="247" height="583" key="VCS.ChangeListViewerDialog" timestamp="1584005577710">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="831" y="248" width="247" height="583" key="VCS.ChangeListViewerDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584005577710" />
+    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584001526520">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584001526520" />
     <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584001376870">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

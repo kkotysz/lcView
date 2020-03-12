@@ -72,7 +72,11 @@ def smooth(x, window_len=11, window='flat'):
         w = eval('np.' + window + '(window_len)')
 
     y = np.convolve(w / w.sum(), s, mode='valid')
-    return y[(int(window_len / 2)):-(int(window_len / 2))]
+    if bool(window_len % 2) is True:
+        ret_val = y[(int(window_len / 2)):-(int(window_len / 2))]
+    else:
+        ret_val = y[(int(window_len / 2)):-(int(window_len / 2))+1]
+    return ret_val
 
 
 if __name__ == "__main__":

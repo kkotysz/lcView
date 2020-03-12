@@ -3,7 +3,7 @@
 echo "===================START===================="
 echo "===============create lc.data==============="
 dir_path=$4
-python3 $dir_path'scripts/TESS_lc_time-median.py' $1
+python3 $dir_path'TESS_lc_time-median.py' $1
 mv lcf.temp lcf.data
 
 #baza czasowa

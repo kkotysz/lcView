@@ -11,7 +11,7 @@ import os
 from scripts.boxcar import smooth as bcsmooth
 
 dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1], '')
-qtCreatorFile = dir_path + "scripts/lcdft.ui"  # Enter file here.
+qtCreatorFile = dir_path + "lcdft.ui"  # Enter file here.
 Ui_MainWindow, QtBaseClass = uic.loadUiType(qtCreatorFile)
 
 
@@ -162,7 +162,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def onClicked(self, index):
         self.file_path = self.sender().model().filePath(index)
         self.time, self.flux, self.ferr = np.loadtxt(self.file_path, unpack=True)
-        system('bash ' + self.dir_path + 'scripts/lcdft.bash ' + self.file_path + ' 0 300 ' + self.dir_path)
+        system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' 0 300 ' + self.dir_path)
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph
@@ -229,7 +229,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
-    # app.setWindowIcon(QtGui.QIcon('small-telescope-color-64.png'))
+    app.setWindowIcon(QtGui.QIcon(dir_path + 'kzhya_ico-64.png'))
     app.setStyle('Fusion')
     window = lcdftMain()
     # window.setWindowFlags(QtCore.Qt.FramelessWindowHint)

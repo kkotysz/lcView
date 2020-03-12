@@ -2,14 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/scripts/kzhya_ico-64.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/scripts/lcdft.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lcView.bash" beforeDir="false" afterPath="$PROJECT_DIR$/lcView.bash" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lcdft.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/boxcar.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/boxcar.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/lcdft.bash" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.bash" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/lcdft.ui" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.ui" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -100,12 +94,20 @@
       <option name="project" value="LOCAL" />
       <updated>1584001517011</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="ico + smooth fix for even numbers">
+      <created>1584006588004</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1584006588004</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="pycharm" />
-    <option name="LAST_COMMIT_MESSAGE" value="pycharm" />
+    <MESSAGE value="ico + smooth fix for even numbers" />
+    <option name="LAST_COMMIT_MESSAGE" value="ico + smooth fix for even numbers" />
   </component>
   <component name="WindowStateProjectService">
     <state x="555" y="201" width="800" height="677" key="#Inspections" timestamp="1583842947896">
@@ -120,10 +122,10 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="693" y="276" width="523" height="528" key="#lcView.bash/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583934838023" />
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584001516946">
+    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584006587931">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584001516946" />
+    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584006587931" />
     <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1584002673026">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
@@ -168,14 +170,22 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="831" y="248" width="247" height="583" key="VCS.ChangeListViewerDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584005577710" />
-    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584001526520">
+    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584006591711">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584001526520" />
+    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584006591711" />
     <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584001376870">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584001376870" />
+    <state x="666" y="156" width="588" height="768" key="find.popup" timestamp="1584007102317">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="666" y="156" width="588" height="768" key="find.popup/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584007102317" />
+    <state x="623" y="239" width="672" height="678" key="search.everywhere.popup" timestamp="1584018538639">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="623" y="239" width="672" height="678" key="search.everywhere.popup/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584018538639" />
     <state x="685" y="455" width="540" height="170" key="vcs.readOnlyHandler.ReadOnlyStatusDialog" timestamp="1583859028551">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

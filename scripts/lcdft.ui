@@ -13,9 +13,11 @@
   <property name="windowTitle">
    <string>lcViewer</string>
   </property>
-  <property name="windowIcon">
-   <iconset>
-    <normaloff>kzhya_ico-64.png</normaloff>kzhya_ico-64.png</iconset>
+  <property name="toolTip">
+   <string/>
+  </property>
+  <property name="toolButtonStyle">
+   <enum>Qt::ToolButtonIconOnly</enum>
   </property>
   <property name="tabShape">
    <enum>QTabWidget::Rounded</enum>
@@ -188,12 +190,21 @@
           <item>
            <widget class="QSlider" name="phase_slider">
             <property name="minimum">
-             <number>-500000</number>
+             <number>-2000</number>
             </property>
             <property name="maximum">
-             <number>500000</number>
+             <number>2000</number>
+            </property>
+            <property name="singleStep">
+             <number>1</number>
+            </property>
+            <property name="pageStep">
+             <number>100</number>
             </property>
             <property name="value">
+             <number>0</number>
+            </property>
+            <property name="sliderPosition">
              <number>0</number>
             </property>
             <property name="orientation">
@@ -237,7 +248,7 @@
         <widget class="QTreeView" name="treeView"/>
        </item>
        <item>
-        <widget class="QListView" name="listView">
+        <widget class="QTableView" name="freq_list">
          <property name="maximumSize">
           <size>
            <width>16777215</width>

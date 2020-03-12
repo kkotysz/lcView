@@ -231,6 +231,7 @@ if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(dir_path + 'kzhya_ico-64.png'))
     app.setStyle('Fusion')
+    app.setApplicationName('lcView')
     window = lcdftMain()
     # window.setWindowFlags(QtCore.Qt.FramelessWindowHint)
     window.move(0, 0)

@@ -4,7 +4,6 @@
     <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/lcdft.ui" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.ui" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -101,13 +100,21 @@
       <option name="project" value="LOCAL" />
       <updated>1584006588004</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="added freqency label + fix for slider">
+      <created>1584019370831</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1584019370831</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="pycharm" />
     <MESSAGE value="ico + smooth fix for even numbers" />
-    <option name="LAST_COMMIT_MESSAGE" value="ico + smooth fix for even numbers" />
+    <MESSAGE value="added freqency label + fix for slider" />
+    <option name="LAST_COMMIT_MESSAGE" value="added freqency label + fix for slider" />
   </component>
   <component name="WindowStateProjectService">
     <state x="555" y="201" width="800" height="677" key="#Inspections" timestamp="1583842947896">
@@ -122,10 +129,10 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="693" y="276" width="523" height="528" key="#lcView.bash/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583934838023" />
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584006587931">
+    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584019370761">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584006587931" />
+    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584019370761" />
     <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1584002673026">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
@@ -170,10 +177,10 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="831" y="248" width="247" height="583" key="VCS.ChangeListViewerDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584005577710" />
-    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584006591711">
+    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584019373017">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584006591711" />
+    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584019373017" />
     <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584001376870">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

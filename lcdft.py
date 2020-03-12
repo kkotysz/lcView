@@ -29,12 +29,15 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
         self.dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1],
                                                            '')  # path to directory where app is opened
+
+        # Initialize variables
         self.time, self.flux, self.ferr = [0, 0, 0]
         self.flux_ph, self.flux_smoothed, self.phase = [0, 0, 0]
         self.freq, self.ampl = [0, 0]
         # --------------------------- Mouse position -------------------------------- #
         pen = pg.mkPen(color=(240, 240, 240))
 
+        # Initialize plots to connect with mouse
         self.curve_lc = self.lc.plot(x=[], y=[], pen=pen)
         self.curve_ph = self.ph.plot(x=[], y=[], pen=pen)
         self.curve_dft = self.dft.plot(x=[], y=[], pen=pen)

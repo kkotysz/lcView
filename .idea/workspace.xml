@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/lcdft.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -76,6 +77,10 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="471" y="175" key="SettingsEditor/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583842956512" />
+    <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584001376870">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584001376870" />
     <state x="685" y="455" width="540" height="170" key="vcs.readOnlyHandler.ReadOnlyStatusDialog" timestamp="1583859028551">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

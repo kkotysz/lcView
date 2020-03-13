@@ -3,7 +3,6 @@
   <component name="ChangeListManager">
     <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/lcdft.bash" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.bash" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/lcdft.ui" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.ui" afterDir="false" />
     </list>
@@ -162,7 +161,14 @@
       <option name="project" value="LOCAL" />
       <updated>1584105682236</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="accuracy">
+      <created>1584110784636</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1584110784636</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -172,7 +178,8 @@
     <MESSAGE value="module fix" />
     <MESSAGE value="__pycache__ added to .gitignore" />
     <MESSAGE value="deltaf" />
-    <option name="LAST_COMMIT_MESSAGE" value="deltaf" />
+    <MESSAGE value="accuracy" />
+    <option name="LAST_COMMIT_MESSAGE" value="accuracy" />
   </component>
   <component name="WindowStateProjectService">
     <state x="555" y="201" width="800" height="677" key="#Inspections" timestamp="1583842947896">
@@ -187,10 +194,10 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="693" y="276" width="523" height="528" key="#lcView.bash/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583934838023" />
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584105682174">
+    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584110784566">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584105682174" />
+    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584110784566" />
     <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584031138697" />
     <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1584002673026">
       <screen x="0" y="0" width="1920" height="1080" />
@@ -236,10 +243,10 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="831" y="248" width="247" height="583" key="VCS.ChangeListViewerDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584005577710" />
-    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584105684162">
+    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584110786556">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584105684162" />
+    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584110786556" />
     <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584031140737" />
     <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584108343618">
       <screen x="0" y="0" width="1920" height="1080" />

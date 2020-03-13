@@ -15,6 +15,126 @@ qtCreatorFile = dir_path + "lcdft.ui"  # Enter file here.
 Ui_MainWindow, QtBaseClass = uic.loadUiType(qtCreatorFile)
 
 
+class TextScrollBarStyle(QtGui.QProxyStyle):
+    def drawComplexControl(self, control, option, painter, widget):
+        # call the base implementation which will draw anything Qt will ask
+        super().drawComplexControl(control, option, painter, widget)
+        # check if control type and orientation match
+        if control == QtGui.QStyle.CC_ScrollBar and option.orientation == QtCore.Qt.Horizontal:
+            # the option is already provided by the widget's internal paintEvent;
+            # from this point on, it's almost the same as explained above, but
+            # setting the pen might be required for some styles
+            painter.setPen(widget.palette().color(QtGui.QPalette.WindowText))
+            margin = self.frameMargin(widget) + 1
+
+            sliderRect = self.subControlRect(control, option,
+                                             QtGui.QStyle.SC_ScrollBarSlider, widget)
+            painter.drawText(sliderRect, QtCore.Qt.AlignCenter, widget.sliderText)
+
+            subPageRect = self.subControlRect(control, option,
+                                              QtGui.QStyle.SC_ScrollBarSubPage, widget)
+            subPageRect.setRight(sliderRect.left() - 1)
+            painter.save()
+            painter.setClipRect(subPageRect)
+            painter.drawText(subPageRect.adjusted(margin, 0, 0, 0),
+                             QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, widget.preText)
+            painter.restore()
+
+            addPageRect = self.subControlRect(control, option,
+                                              QtGui.QStyle.SC_ScrollBarAddPage, widget)
+            addPageRect.setLeft(sliderRect.right() + 1)
+            painter.save()
+            painter.setClipRect(addPageRect)
+            painter.drawText(addPageRect.adjusted(0, 0, -margin, 0),
+                             QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter, widget.postText)
+            painter.restore()
+
+    def frameMargin(self, widget):
+        # a helper function to get the default frame margin which is usually added
+        # to widgets and sub widgets that might look like a frame, which usually
+        # includes the slider of a scrollbar
+        option = QtGui.QStyleOptionFrame()
+        option.initFrom(widget)
+        return self.pixelMetric(QtGui.QStyle.PM_DefaultFrameWidth, option, widget)
+
+    def subControlRect(self, control, option, subControl, widget):
+        rect = super().subControlRect(control, option, subControl, widget)
+        if (control == QtGui.QStyle.CC_ScrollBar
+                and isinstance(widget, StyledTextScrollBar)
+                and option.orientation == QtCore.Qt.Horizontal):
+            if subControl == QtGui.QStyle.SC_ScrollBarSlider:
+                # get the *default* groove rectangle (the space in which the
+                # slider can move)
+                grooveRect = super().subControlRect(control, option,
+                                                    QtGui.QStyle.SC_ScrollBarGroove, widget)
+                # ensure that the slider is wide enough for its text
+                width = max(rect.width(),
+                            widget.sliderWidth + self.frameMargin(widget))
+                # compute the position of the slider according to the
+                # scrollbar value and available space (the "groove")
+                pos = self.sliderPositionFromValue(widget.minimum(),
+                                                   widget.maximum(), widget.sliderPosition(),
+                                                   grooveRect.width() - width)
+                # return the new rectangle
+                return QtCore.QRect(grooveRect.x() + pos,
+                                    (grooveRect.height() - rect.height()) / 2,
+                                    width, rect.height())
+            elif subControl == QtGui.QStyle.SC_ScrollBarSubPage:
+                # adjust the rectangle based on the slider
+                sliderRect = self.subControlRect(
+                    control, option, QtGui.QStyle.SC_ScrollBarSlider, widget)
+                rect.setRight(sliderRect.left())
+            elif subControl == QtGui.QStyle.SC_ScrollBarAddPage:
+                # same as above
+                sliderRect = self.subControlRect(
+                    control, option, QtGui.QStyle.SC_ScrollBarSlider, widget)
+                rect.setLeft(sliderRect.right())
+        return rect
+
+    def hitTestComplexControl(self, control, option, pos, widget):
+        if control == QtGui.QStyle.CC_ScrollBar:
+            # check click events against the resized slider
+            sliderRect = self.subControlRect(control, option,
+                                             QtGui.QStyle.SC_ScrollBarSlider, widget)
+            if pos in sliderRect:
+                return QtGui.QStyle.SC_ScrollBarSlider
+        return super().hitTestComplexControl(control, option, pos, widget)
+
+
+class StyledTextScrollBar(QtWidgets.QScrollBar):
+    def __init__(self, sliderText='', preText='', postText=''):
+        super().__init__(QtCore.Qt.Orientation.Horizontal)
+        self.setStyle(TextScrollBarStyle())
+        self.preText = preText
+        self.postText = postText
+        self.sliderText = sliderText
+        self.sliderTextMargin = 2
+        self.sliderWidth = self.fontMetrics().width(sliderText) + self.sliderTextMargin + 2
+
+    def setPreText(self, text):
+        self.preText = text
+        self.update()
+
+    def setPostText(self, text):
+        self.postText = text
+        self.update
+
+    def setSliderText(self, text):
+        self.sliderText = text
+        self.sliderWidth = self.fontMetrics().width(text) + self.sliderTextMargin + 2
+
+    def setSliderTextMargin(self, margin):
+        self.sliderTextMargin = margin
+        self.sliderWidth = self.fontMetrics().width(self.sliderText) + margin + 2
+
+    def sizeHint(self):
+        # give the scrollbar enough height for the font
+        hint = super().sizeHint()
+        if hint.height() < self.fontMetrics().height() + 4:
+            hint.setHeight(self.fontMetrics().height() + 4)
+        return hint
+
+
 class TableModel(QtCore.QAbstractTableModel):
     def __init__(self):
         super(TableModel, self).__init__()
@@ -61,6 +181,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
         self.setupUi(self)
 
+        self.phase_shifter = StyledTextScrollBar()
+        self.phaselayout.addWidget(self.phase_shifter)
+        self.phase_shifter.setSliderText('PHASE SHIFTER')
+        self.phase_shifter.setValue(49)
+        self.phase_shifter.valueChanged.connect(lambda: self.state_changed(False))
+
         self.populate()
         self.treeView.clicked.connect(self.onClicked)
 
@@ -78,6 +204,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.grepen = pg.mkPen(color=self.symgrepen)
 
         # Initialize variables
+        self.shift_p = float(self.phase_shifter.value())
         self.current_point = [
             0]  # needed, because sigMouseClicked and sigMouseMoved give slighlty different values (moved is correct)
         self.time, self.flux, self.ferr = [0, 0, 0]
@@ -119,7 +246,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.smooth.stateChanged.connect(lambda: self.state_changed(True))
         self.curve_dft.scene().sigMouseClicked.connect(lambda: self.state_changed(True))
         self.smooth_spin.valueChanged.connect(lambda: self.state_changed(False))
-        self.phase_slider.valueChanged.connect(lambda: self.state_changed(False))
+        self.freq_slider.valueChanged.connect(lambda: self.state_changed(False))
         self.start_spin.valueChanged.connect(self.getdftrange)
         self.end_spin.valueChanged.connect(self.getdftrange)
         self.acc_spin.valueChanged.connect(self.getdftrange)
@@ -145,12 +272,14 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.endf = self.end_spin.value()
         self.acc = self.acc_spin.value()
 
-    def state_changed(self, click_flag=False):  # click_flat to know if is executed by sigMouseClick
+    def state_changed(self, click_flag=False):  # click_flag to know if is executed by sigMouseClick
         if click_flag is False:
-            self.curr_per_n = 1. / (1. / self.curr_per + float(self.phase_slider.value()) * 1e-4)
+            deltaT = self.time[-1]-self.time[0]
+            self.curr_per_n = 1. / (1. / self.curr_per + float(self.freq_slider.value()) * 0.01/deltaT)
             self.update_line()  # update vertical line with current slider
             self.show_table()  # update table values with slider
-        self.phase = (self.time % self.curr_per_n) / self.curr_per_n
+        self.shift_p = (float(self.phase_shifter.value()) - 50.) / 100.*self.curr_per_n
+        self.phase = ((self.time + self.shift_p) % self.curr_per_n) / self.curr_per_n
         try:
             temp = zip(self.phase, self.flux)
             temp = sorted(temp)
@@ -250,7 +379,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.plot_ph()  # update phase plot
             self.show_table()  # update frequency list
             self.plot_line()  # plot vertical line
-            self.phase_slider.setValue(0)  # reset slider
+            self.freq_slider.setValue(0)  # reset slider
 
     def onMouseMoved(self, point):
         # print(point)
@@ -277,6 +406,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.plot_ph()  # plot dft graph
         self.show_table()  # update frequency list
         self.state_changed()
+        self.phase_shifter.setValue(50)
 
     def populate(self):
         path = QtCore.QDir.currentPath()

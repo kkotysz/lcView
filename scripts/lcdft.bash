@@ -15,7 +15,7 @@ deltaT=`awk '{print $2-$1}' .ttt`
 echo
 echo
 echo "===================fwpeaks=================="
-fwpeaks -f lcf.data $2 $3 0.005 | head -n 10
+fwpeaks -f lcf.data $2 $3 0.1/deltaT | head -n 10
 sed '1d;$d' lcf.trf > res; mv res lcf.trf
 
 rm .t0 .tn .ttt median.dat lcf.max

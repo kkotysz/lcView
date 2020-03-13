@@ -106,6 +106,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # Initialize variables for dft range
         self.startf = self.start_spin.value()
         self.endf = self.end_spin.value()
+        self.acc = self.acc_spin.value()
         # --------------------------------------------------------------------------- #
 
         # ------------------------------ Graphics ----------------------------------- #
@@ -121,6 +122,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phase_slider.valueChanged.connect(lambda: self.state_changed(False))
         self.start_spin.valueChanged.connect(self.getdftrange)
         self.end_spin.valueChanged.connect(self.getdftrange)
+        self.acc_spin.valueChanged.connect(self.getdftrange)
+        self.recalc.clicked.connect(self.onClicked)
         # --------------------------------------------------------------------------- #
 
         # -------------------- Start table with frequency data ---------------------- #
@@ -140,6 +143,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def getdftrange(self):
         self.startf = self.start_spin.value()
         self.endf = self.end_spin.value()
+        self.acc = self.acc_spin.value()
 
     def state_changed(self, click_flag=False):  # click_flat to know if is executed by sigMouseClick
         if click_flag is False:
@@ -260,12 +264,13 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                 mousePoint_ph.x(), mousePoint_ph.y()))
 
     def onClicked(self, index):
-        self.file_path = self.sender().model().filePath(index)
+        try:
+            self.file_path = self.sender().model().filePath(index)
+        except AttributeError:
+            pass
         self.time, self.flux, self.ferr = np.loadtxt(self.file_path, unpack=True)
-        print('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(int(self.startf)) + ' ' + str(int(
-            self.endf)) + ' ' + self.dir_path)
         system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(int(self.startf)) + ' ' + str(int(
-            self.endf)) + ' ' + self.dir_path)
+            self.endf)) + ' ' + str(int(self.acc)) + ' ' + self.dir_path)
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph

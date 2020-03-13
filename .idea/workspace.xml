@@ -14,6 +14,7 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="UPDATE_TYPE" value="MERGE" />
   </component>
   <component name="ProjectId" id="1Yw9TuYw7PI9DM092Zls1sRVKOL" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
@@ -240,10 +241,10 @@
     </state>
     <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584105684162" />
     <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584031140737" />
-    <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584001376870">
+    <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584108343618">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
-    <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584001376870" />
+    <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584108343618" />
     <state x="666" y="156" width="588" height="768" key="find.popup" timestamp="1584007102317">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

@@ -102,6 +102,10 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.curr_per_n = 1. / self.mouse_x
         self.curr_ampl = 1. / self.mouse_y
         self.curve_dft.scene().sigMouseClicked.connect(self.onMouseClicked)
+
+        # Initialize variables for dft range
+        self.startf = self.start_spin.value()
+        self.endf = self.end_spin.value()
         # --------------------------------------------------------------------------- #
 
         # ------------------------------ Graphics ----------------------------------- #
@@ -115,6 +119,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.curve_dft.scene().sigMouseClicked.connect(lambda: self.state_changed(True))
         self.smooth_spin.valueChanged.connect(lambda: self.state_changed(False))
         self.phase_slider.valueChanged.connect(lambda: self.state_changed(False))
+        self.start_spin.valueChanged.connect(self.getdftrange)
+        self.end_spin.valueChanged.connect(self.getdftrange)
         # --------------------------------------------------------------------------- #
 
         # -------------------- Start table with frequency data ---------------------- #
@@ -130,6 +136,10 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # self._freqtv.resizeRowsToContents()
         #                                                                             #
         # --------------------------------------------------------------------------- #
+
+    def getdftrange(self):
+        self.startf = self.start_spin.value()
+        self.endf = self.end_spin.value()
 
     def state_changed(self, click_flag=False):  # click_flat to know if is executed by sigMouseClick
         if click_flag is False:
@@ -252,7 +262,10 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def onClicked(self, index):
         self.file_path = self.sender().model().filePath(index)
         self.time, self.flux, self.ferr = np.loadtxt(self.file_path, unpack=True)
-        system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' 0 300 ' + self.dir_path)
+        print('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(int(self.startf)) + ' ' + str(int(
+            self.endf)) + ' ' + self.dir_path)
+        system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(int(self.startf)) + ' ' + str(int(
+            self.endf)) + ' ' + self.dir_path)
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph
@@ -312,10 +325,9 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def plot_dft(self):
         self.dft.setBackground('#1C1717')
         if self.file_path != 'first_run':
-            self.curr_per_n = 1. / self.freq[
-                np.where(self.ampl == max(self.ampl[np.where(np.abs(self.freq - 0.5) <= 1e-6)[0][0]:]))[0][0]]
+            self.curr_per_n = 1. / self.freq[np.where(self.ampl == max(self.ampl[self.freq > 0.3]))[0][0]]
             self.curr_per = self.curr_per_n
-            self.curr_ampl = max(self.ampl[np.where(np.abs(self.freq - 0.5) <= 1e-6)[0][0]:])
+            self.curr_ampl = max(self.ampl[self.freq > 0.3])
             self.max_per = self.curr_per
             self.dft.clear()
             self.dft.plot(self.freq, self.ampl, pen=self.sympen)

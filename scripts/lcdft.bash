@@ -1,8 +1,9 @@
 #!/bin/bash
-
+#rm lcf.data lcf.trf
 echo "===================START===================="
 echo "===============create lc.data==============="
 dir_path=$4
+echo $dir_path
 python3 $dir_path'TESS_lc_time-median.py' $1
 mv lcf.temp lcf.data
 
@@ -15,7 +16,8 @@ deltaT=`awk '{print $2-$1}' .ttt`
 echo
 echo
 echo "===================fwpeaks=================="
-deltaf=0.1/$deltaT
+deltaf=$(echo 0.1/$deltaT | bc -l)
+echo $deltaf
 fwpeaks -f lcf.data $2 $3 $deltaf | head -n 10
 sed '1d;$d' lcf.trf > res; mv res lcf.trf
 

@@ -4,7 +4,6 @@
     <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/lcdft.ui" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.ui" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -78,8 +77,8 @@
     </configuration>
     <list>
       <item itemvalue="Bash.lcView.bash" />
-      <item itemvalue="Python.lcdft" />
       <item itemvalue="Bash.lcdft.bash" />
+      <item itemvalue="Python.lcdft" />
     </list>
     <recent_temporary>
       <list>
@@ -189,8 +188,25 @@
       <option name="project" value="LOCAL" />
       <updated>1584115992150</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="freq indicator">
+      <created>1584189636994</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1584189636994</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
+  </component>
+  <component name="Vcs.Log.History.Properties">
+    <option name="COLUMN_ORDER">
+      <list>
+        <option value="0" />
+        <option value="2" />
+        <option value="3" />
+        <option value="1" />
+      </list>
+    </option>
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="pycharm" />
@@ -201,7 +217,8 @@
     <MESSAGE value="deltaf" />
     <MESSAGE value="accuracy" />
     <MESSAGE value="phase shifter" />
-    <option name="LAST_COMMIT_MESSAGE" value="phase shifter" />
+    <MESSAGE value="freq indicator" />
+    <option name="LAST_COMMIT_MESSAGE" value="freq indicator" />
   </component>
   <component name="WindowStateProjectService">
     <state x="555" y="201" width="800" height="677" key="#Inspections" timestamp="1583842947896">
@@ -217,35 +234,35 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="693" y="276" width="523" height="528" key="#lcView.bash/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1583934838023" />
-    <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584115992107">
-      <screen x="0" y="0" width="1920" height="1080" />
+    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584189636922">
+      <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115992107" />
-    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584031138697" />
+    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189636922" />
     <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1584002673026">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584002673026" />
-    <state width="1899" height="276" key="GridCell.Tab.0.bottom" timestamp="1584189586356">
+    <state width="1899" height="276" key="GridCell.Tab.0.bottom" timestamp="1584189738404">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state width="1899" height="289" key="GridCell.Tab.0.bottom/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115870422" />
-    <state width="1899" height="276" key="GridCell.Tab.0.bottom/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189586356" />
-    <state width="1899" height="276" key="GridCell.Tab.0.center" timestamp="1584189586356">
+    <state width="1899" height="276" key="GridCell.Tab.0.bottom/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189738404" />
+    <state width="1899" height="276" key="GridCell.Tab.0.center" timestamp="1584189738404">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state width="1899" height="289" key="GridCell.Tab.0.center/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115870422" />
-    <state width="1899" height="276" key="GridCell.Tab.0.center/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189586356" />
-    <state width="1899" height="276" key="GridCell.Tab.0.left" timestamp="1584189586356">
+    <state width="1899" height="276" key="GridCell.Tab.0.center/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189738404" />
+    <state width="1899" height="276" key="GridCell.Tab.0.left" timestamp="1584189738404">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state width="1899" height="289" key="GridCell.Tab.0.left/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115870421" />
-    <state width="1899" height="276" key="GridCell.Tab.0.left/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189586356" />
-    <state width="1899" height="276" key="GridCell.Tab.0.right" timestamp="1584189586356">
+    <state width="1899" height="276" key="GridCell.Tab.0.left/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189738404" />
+    <state width="1899" height="276" key="GridCell.Tab.0.right" timestamp="1584189738404">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state width="1899" height="289" key="GridCell.Tab.0.right/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115870422" />
-    <state width="1899" height="276" key="GridCell.Tab.0.right/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189586356" />
+    <state width="1899" height="276" key="GridCell.Tab.0.right/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189738404" />
     <state width="1899" height="356" key="GridCell.Tab.1.bottom" timestamp="1584002854341">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
@@ -270,11 +287,11 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="831" y="248" width="247" height="583" key="VCS.ChangeListViewerDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584005577710" />
-    <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584115993503">
-      <screen x="0" y="0" width="1920" height="1080" />
+    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584189638996">
+      <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115993503" />
-    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584031140737" />
+    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584189638996" />
     <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584108343618">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

@@ -277,11 +277,11 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
     def state_changed(self, click_flag=False, phase_flag=False):  # click_flag to know if is executed by sigMouseClick
         if click_flag is False:
-            deltaT = self.time[-1]-self.time[0]
-            self.curr_per_n = 1. / (1. / self.curr_per + float(self.freq_slider.value()) * 0.01/deltaT)
+            deltaT = self.time[-1] - self.time[0]
+            self.curr_per_n = 1. / (1. / self.curr_per + float(self.freq_slider.value()) * 0.01 / deltaT)
             self.update_line()  # update vertical line with current slider
             self.show_table()  # update table values with slider
-        self.shift_p = (float(self.phase_shifter.value()) - 50.) / 100.*self.curr_per_n
+        self.shift_p = (float(self.phase_shifter.value()) - 50.) / 100. * self.curr_per_n
         self.phase = ((self.time + self.shift_p) % self.curr_per_n) / self.curr_per_n
         try:
             temp = zip(self.phase, self.flux)
@@ -415,7 +415,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(int(self.startf)) + ' ' + str(int(
             self.endf)) + ' ' + str(int(self.acc)) + ' ' + self.dir_path)
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
-        self.smooth_spin.setValue(int(len(self.time)/10))
+        self.smooth_spin.setValue(int(len(self.time) / 10))
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph
         self.plot_ph()  # plot dft graph

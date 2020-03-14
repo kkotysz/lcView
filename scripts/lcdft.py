@@ -301,6 +301,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def plot_dft(self):
         if self.file_path != 'first_run':
             self.curve_dft.setData(self.freq, self.ampl)
+            if self.hover_curr_freq.value() > self.endf:
+                self.hover_curr_freq.setValue(self.endf)
             self.dft.autoRange()
 
     def closeEvent(self, event):

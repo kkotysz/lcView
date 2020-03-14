@@ -5,7 +5,7 @@ from PyQt5 import QtCore, QtGui, uic, QtWidgets
 import pyqtgraph as pg
 import pandas as pd
 import numpy as np
-from astropy import units as u
+# from astropy import units as u
 from os import system
 import os
 from boxcar import smooth as bcsmooth
@@ -178,14 +178,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         QtGui.QMainWindow.__init__(self)
         Ui_MainWindow.__init__(self)
         pg.setConfigOptions(antialias=True)
-
+        self.showMaximized()
         self.setupUi(self)
-
-        self.phase_shifter = StyledTextScrollBar()
-        self.phaselayout.addWidget(self.phase_shifter)
-        self.phase_shifter.setSliderText('PHASE SHIFTER')
-        self.phase_shifter.setValue(49)
-        self.phase_shifter.valueChanged.connect(lambda: self.state_changed(False))
 
         self.populate()
         self.treeView.clicked.connect(self.onClicked)
@@ -204,7 +198,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.grepen = pg.mkPen(color=self.symgrepen)
 
         # Initialize variables
-        self.shift_p = float(self.phase_shifter.value())
+        # self.shift_p = float(self.phase_shifter.value())
         self.current_point = [
             0]  # needed, because sigMouseClicked and sigMouseMoved give slighlty different values (moved is correct)
         self.time, self.flux, self.ferr = [0, 0, 0]
@@ -236,17 +230,26 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.acc = self.acc_spin.value()
         # --------------------------------------------------------------------------- #
 
+        # ------------------------------ Phase Shifter------------------------------- #
+        self.phase_shifter = StyledTextScrollBar()
+        self.phaselayout.addWidget(self.phase_shifter)
+        self.phase_shifter.setSliderText('PHASE SHIFTER')
+        self.phase_shifter.setValue(49)
+        self.phase_shifter.valueChanged.connect(lambda: self.state_changed(phase_flag=True))
+        # --------------------------------------------------------------------------- #
+
+        # --------------------------------------------------------------------------- #
         # ------------------------------ Graphics ----------------------------------- #
         self.file_path = 'first_run'  # path to recognize when first run
         self.max_per = 1.
         self.plot_lc()  # plot lc graph
         self.plot_ph()  # plot lc graph
         self.plot_dft()  # plot dft graph
-        self.errors.stateChanged.connect(lambda: self.state_changed(True))
-        self.smooth.stateChanged.connect(lambda: self.state_changed(True))
-        self.curve_dft.scene().sigMouseClicked.connect(lambda: self.state_changed(True))
-        self.smooth_spin.valueChanged.connect(lambda: self.state_changed(False))
-        self.freq_slider.valueChanged.connect(lambda: self.state_changed(False))
+        self.errors.stateChanged.connect(lambda: self.state_changed(click_flag=True))
+        self.smooth.stateChanged.connect(lambda: self.state_changed(click_flag=True))
+        self.curve_dft.scene().sigMouseClicked.connect(lambda: self.state_changed(click_flag=True))
+        self.smooth_spin.valueChanged.connect(lambda: self.state_changed())
+        self.freq_slider.valueChanged.connect(lambda: self.state_changed())
         self.start_spin.valueChanged.connect(self.getdftrange)
         self.end_spin.valueChanged.connect(self.getdftrange)
         self.acc_spin.valueChanged.connect(self.getdftrange)
@@ -272,7 +275,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.endf = self.end_spin.value()
         self.acc = self.acc_spin.value()
 
-    def state_changed(self, click_flag=False):  # click_flag to know if is executed by sigMouseClick
+    def state_changed(self, click_flag=False, phase_flag=False):  # click_flag to know if is executed by sigMouseClick
         if click_flag is False:
             deltaT = self.time[-1]-self.time[0]
             self.curr_per_n = 1. / (1. / self.curr_per + float(self.freq_slider.value()) * 0.01/deltaT)
@@ -309,7 +312,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                              symbolPen=self.symgrepen,
                              symbolBrush=self.symgrepen)
                 self.lc.autoRange()
-                self.ph.autoRange()
+                if phase_flag is False:
+                    self.ph.autoRange()
 
             elif self.errors.isChecked() is False and self.smooth.isChecked() is True:
                 self.lc.clear()
@@ -324,7 +328,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                              symbolPen=self.symgrepen,
                              symbolBrush=self.symgrepen)
                 self.lc.autoRange()
-                self.ph.autoRange()
+                if phase_flag is False:
+                    self.ph.autoRange()
 
             elif self.errors.isChecked() is True and self.smooth.isChecked() is False:
                 self.lc.clear()
@@ -338,7 +343,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                 self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
                              symbolBrush=self.sympen)
                 self.lc.autoRange()
-                self.ph.autoRange()
+                if phase_flag is False:
+                    self.ph.autoRange()
 
             elif self.errors.isChecked() is False and self.smooth.isChecked() is False:
                 self.lc.clear()
@@ -348,7 +354,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                 self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
                              symbolBrush=self.sympen)
                 self.lc.autoRange()
-                self.ph.autoRange()
+                if phase_flag is False:
+                    self.ph.autoRange()
         except TypeError:
             print("ERROR: Probably file is not loaded.")
 
@@ -380,6 +387,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.show_table()  # update frequency list
             self.plot_line()  # plot vertical line
             self.freq_slider.setValue(0)  # reset slider
+            self.phase_shifter.setValue(50)  # reset phase shifter
 
     def onMouseMoved(self, point):
         # print(point)
@@ -387,6 +395,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         mousePoint_lc = self.lc.plotItem.vb.mapSceneToView(point)
         mousePoint_ph = self.ph.plotItem.vb.mapSceneToView(point)
         mousePoint_dft = self.dft.plotItem.vb.mapSceneToView(point)
+        try:
+            self.dft.removeItem(self.hover_curr_freq)
+        except AttributeError:
+            pass
+        self.hover_curr_freq = pg.InfiniteLine(pos=mousePoint_dft.x(), pen=self.whipen)
+        self.dft.addItem(self.hover_curr_freq)
         self.statusBar().showMessage(
             '{:2s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}'.format(
                 'LC: ', mousePoint_lc.x(), mousePoint_lc.y(), 'TRF: ', mousePoint_dft.x(), mousePoint_dft.y(), 'PHS: ',
@@ -401,12 +415,14 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(int(self.startf)) + ' ' + str(int(
             self.endf)) + ' ' + str(int(self.acc)) + ' ' + self.dir_path)
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
+        self.smooth_spin.setValue(int(len(self.time)/10))
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph
         self.plot_ph()  # plot dft graph
         self.show_table()  # update frequency list
         self.state_changed()
-        self.phase_shifter.setValue(50)
+        self.freq_slider.setValue(0)  # reset slider
+        self.phase_shifter.setValue(50)  # reset phase shifter
 
     def populate(self):
         path = QtCore.QDir.currentPath()
@@ -485,10 +501,9 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(dir_path + 'kzhya_ico-64.png'))
-    app.setStyle('Fusion')
+    app.setStyle('Breeze')
     app.setApplicationName('lcView')
     window = lcdftMain()
-    # window.setWindowFlags(QtCore.Qt.FramelessWindowHint)
     window.move(0, 0)
     window.show()
     sys.exit(app.exec_())

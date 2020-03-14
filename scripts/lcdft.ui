@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1214</width>
-    <height>777</height>
+    <width>1315</width>
+    <height>868</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -44,7 +44,7 @@
     </property>
     <item>
      <widget class="QWidget" name="graphs" native="true">
-      <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,0">
+      <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0">
        <property name="spacing">
         <number>0</number>
        </property>
@@ -76,6 +76,9 @@
            <property name="spacing">
             <number>0</number>
            </property>
+           <property name="sizeConstraint">
+            <enum>QLayout::SetNoConstraint</enum>
+           </property>
            <property name="leftMargin">
             <number>0</number>
            </property>
@@ -89,7 +92,11 @@
             <number>0</number>
            </property>
            <item>
-            <widget class="PlotWidget" name="lc"/>
+            <widget class="PlotWidget" name="lc">
+             <property name="dragMode">
+              <enum>QGraphicsView::NoDrag</enum>
+             </property>
+            </widget>
            </item>
           </layout>
          </widget>
@@ -97,9 +104,12 @@
           <attribute name="title">
            <string>PHASE</string>
           </attribute>
-          <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <layout class="QVBoxLayout" name="verticalLayout_3">
            <property name="spacing">
             <number>0</number>
+           </property>
+           <property name="sizeConstraint">
+            <enum>QLayout::SetNoConstraint</enum>
            </property>
            <property name="leftMargin">
             <number>0</number>
@@ -114,17 +124,25 @@
             <number>0</number>
            </property>
            <item>
-            <widget class="PlotWidget" name="ph"/>
+            <widget class="PlotWidget" name="ph">
+             <property name="dragMode">
+              <enum>QGraphicsView::NoDrag</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QGridLayout" name="phaselayout"/>
            </item>
           </layout>
          </widget>
         </widget>
        </item>
        <item>
-        <layout class="QGridLayout" name="phaselayout"/>
-       </item>
-       <item>
-        <widget class="PlotWidget" name="dft"/>
+        <widget class="PlotWidget" name="dft">
+         <property name="cursor" stdset="0">
+          <cursorShape>CrossCursor</cursorShape>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -434,7 +452,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1214</width>
+     <width>1315</width>
      <height>20</height>
     </rect>
    </property>

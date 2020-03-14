@@ -181,8 +181,11 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.showMaximized()
         self.setupUi(self)
 
+        # ------------------------------ Tree View ---------------------------------- #
+        self.popmodel = QtWidgets.QFileSystemModel()
         self.populate()
         self.treeView.clicked.connect(self.onClicked)
+        # --------------------------------------------------------------------------- #
 
         self.dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1],
                                                            '')  # path to directory where app is opened
@@ -220,7 +223,6 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.mouse_x = 1.
         self.mouse_y = 1.
         self.curr_per = 1. / self.mouse_x
-        self.curr_per_n = 1. / self.mouse_x
         self.curr_ampl = 1. / self.mouse_y
         self.curve_dft.scene().sigMouseClicked.connect(self.onMouseClicked)
 
@@ -235,7 +237,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phaselayout.addWidget(self.phase_shifter)
         self.phase_shifter.setSliderText('PHASE SHIFTER')
         self.phase_shifter.setValue(49)
-        self.phase_shifter.valueChanged.connect(lambda: self.state_changed(phase_flag=True))
+        self.phase_shifter.valueChanged.connect(self.phase_shift)
         # --------------------------------------------------------------------------- #
 
         # --------------------------------------------------------------------------- #
@@ -245,11 +247,13 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.plot_lc()  # plot lc graph
         self.plot_ph()  # plot lc graph
         self.plot_dft()  # plot dft graph
-        self.errors.stateChanged.connect(lambda: self.state_changed(click_flag=True))
-        self.smooth.stateChanged.connect(lambda: self.state_changed(click_flag=True))
-        self.curve_dft.scene().sigMouseClicked.connect(lambda: self.state_changed(click_flag=True))
-        self.smooth_spin.valueChanged.connect(lambda: self.state_changed())
-        self.freq_slider.valueChanged.connect(lambda: self.state_changed())
+        # self.errors.stateChanged.connect(lambda: self.state_changed(click_flag=True))
+        # self.smooth.stateChanged.connect(lambda: self.state_changed(click_flag=True))
+        self.errors.stateChanged.connect(self.state_changed)
+        self.smooth.stateChanged.connect(self.state_changed)
+        self.curve_dft.scene().sigMouseClicked.connect(self.dft_clicked)
+        self.smooth_spin.valueChanged.connect(self.state_changed)
+        # self.freq_slider.valueChanged.connect(lambda: self.state_changed())
         self.start_spin.valueChanged.connect(self.getdftrange)
         self.end_spin.valueChanged.connect(self.getdftrange)
         self.acc_spin.valueChanged.connect(self.getdftrange)
@@ -275,97 +279,108 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.endf = self.end_spin.value()
         self.acc = self.acc_spin.value()
 
-    def state_changed(self, click_flag=False, phase_flag=False):  # click_flag to know if is executed by sigMouseClick
-        if click_flag is False:
+    def phase_shift(self):
+        print("phase_shift executed")
+        self.shift_p = (float(self.phase_shifter.value()) - 50.) / 100. * self.curr_per
+        self.phase = ((self.time + self.shift_p) % self.curr_per) / self.curr_per
+        temp = zip(self.phase, self.flux)
+        temp = sorted(temp)
+        self.phase, self.flux_ph = zip(*temp)
+        self.phase = np.array(self.phase)
+        self.flux_ph = np.array(self.flux_ph)
+        self.state_changed()
+
+    def dft_clicked(self):
+        if self.clicked_point.button() == 1:
             deltaT = self.time[-1] - self.time[0]
-            self.curr_per_n = 1. / (1. / self.curr_per + float(self.freq_slider.value()) * 0.01 / deltaT)
-            self.update_line()  # update vertical line with current slider
+            self.plot_line()  # update vertical line with current slider
             self.show_table()  # update table values with slider
-        self.shift_p = (float(self.phase_shifter.value()) - 50.) / 100. * self.curr_per_n
-        self.phase = ((self.time + self.shift_p) % self.curr_per_n) / self.curr_per_n
-        try:
-            temp = zip(self.phase, self.flux)
-            temp = sorted(temp)
-            self.phase, self.flux_ph = zip(*temp)
-            self.phase = np.array(self.phase)
-            self.flux_ph = np.array(self.flux_ph)
-            self.flux_smoothed = bcsmooth(self.flux_ph, self.smooth_spin.value())
+            self.state_changed()
+            self.ph.autoRange()
+            self.lc.autoRange()
 
-            err_lc = pg.ErrorBarItem(x=self.time, y=self.flux, height=self.ferr, beam=0.0,
-                                     pen={'color': 'w', 'width': 0})
-            err_ph = pg.ErrorBarItem(x=self.phase, y=self.flux_ph, height=self.ferr, beam=0.0,
-                                     pen={'color': 'w', 'width': 0})
+    def state_changed(self):  # click_flag to know if is executed by sigMouseClick
+        # try:
+        print('state changed executed')
+        # print(self.phase)
+        # temp = zip(self.phase, self.flux)
+        # temp = sorted(temp)
+        # self.phase, self.flux_ph = zip(*temp)
+        # self.phase = np.array(self.phase)
+        # self.flux_ph = np.array(self.flux_ph)
+        self.flux_smoothed = bcsmooth(self.flux_ph, self.smooth_spin.value())
+        err_lc = pg.ErrorBarItem(x=self.time, y=self.flux, height=self.ferr, beam=0.0,
+                                 pen={'color': 'w', 'width': 0})
+        err_ph = pg.ErrorBarItem(x=self.phase, y=self.flux_ph, height=self.ferr, beam=0.0,
+                                 pen={'color': 'w', 'width': 0})
 
-            if self.errors.isChecked() is True and self.smooth.isChecked() is True:
-                self.lc.clear()
-                self.ph.clear()
+        if self.errors.isChecked() is True and self.smooth.isChecked() is True:
+            self.lc.clear()
+            self.ph.clear()
 
-                self.lc.addItem(err_lc)
-                self.ph.addItem(err_ph)
+            self.lc.addItem(err_lc)
+            self.ph.addItem(err_ph)
 
-                self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                             symbolBrush=self.sympen)
-                self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5,
-                             symbolPen=self.sympen,
-                             symbolBrush=self.sympen)
-                self.ph.plot(self.phase, self.flux_smoothed, pen=None, symbol='o', symbolSize=2.5,
-                             symbolPen=self.symgrepen,
-                             symbolBrush=self.symgrepen)
-                self.lc.autoRange()
-                if phase_flag is False:
-                    self.ph.autoRange()
+            self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
+            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5,
+                         symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
+            self.ph.plot(self.phase, self.flux_smoothed, pen=None, symbol='o', symbolSize=2.5,
+                         symbolPen=self.symgrepen,
+                         symbolBrush=self.symgrepen)
+            # if (phase_flag is False) and (click_flag is True):
+            #     self.ph.autoRange()
+            #     self.lc.autoRange()
 
-            elif self.errors.isChecked() is False and self.smooth.isChecked() is True:
-                self.lc.clear()
-                self.ph.clear()
+        elif self.errors.isChecked() is False and self.smooth.isChecked() is True:
+            self.lc.clear()
+            self.ph.clear()
 
-                self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                             symbolBrush=self.sympen)
-                self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5,
-                             symbolPen=self.sympen,
-                             symbolBrush=self.sympen)
-                self.ph.plot(self.phase, self.flux_smoothed, pen=None, symbol='o', symbolSize=2.5,
-                             symbolPen=self.symgrepen,
-                             symbolBrush=self.symgrepen)
-                self.lc.autoRange()
-                if phase_flag is False:
-                    self.ph.autoRange()
+            self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
+            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5,
+                         symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
+            self.ph.plot(self.phase, self.flux_smoothed, pen=None, symbol='o', symbolSize=2.5,
+                         symbolPen=self.symgrepen,
+                         symbolBrush=self.symgrepen)
+            # if (phase_flag is False) and (click_flag is True):
+            #     self.ph.autoRange()
+            #     # self.lc.autoRange()
 
-            elif self.errors.isChecked() is True and self.smooth.isChecked() is False:
-                self.lc.clear()
-                self.ph.clear()
+        elif self.errors.isChecked() is True and self.smooth.isChecked() is False:
+            self.lc.clear()
+            self.ph.clear()
 
-                self.lc.addItem(err_lc)
-                self.ph.addItem(err_ph)
+            self.lc.addItem(err_lc)
+            self.ph.addItem(err_ph)
 
-                self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                             symbolBrush=self.sympen)
-                self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                             symbolBrush=self.sympen)
-                self.lc.autoRange()
-                if phase_flag is False:
-                    self.ph.autoRange()
+            self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
+            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
+            # if (phase_flag is False) and (click_flag is True):
+            #     self.ph.autoRange()
+            #     self.lc.autoRange()
 
-            elif self.errors.isChecked() is False and self.smooth.isChecked() is False:
-                self.lc.clear()
-                self.ph.clear()
-                self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                             symbolBrush=self.sympen)
-                self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                             symbolBrush=self.sympen)
-                self.lc.autoRange()
-                if phase_flag is False:
-                    self.ph.autoRange()
-        except TypeError:
-            print("ERROR: Probably file is not loaded.")
+        elif self.errors.isChecked() is False and self.smooth.isChecked() is False:
+            self.lc.clear()
+            self.ph.clear()
+            self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
+            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
+            # if (phase_flag is False) and (click_flag is True):
+            #     self.ph.autoRange()
+            #     self.lc.autoRange()
+        # except TypeError:
+        # print("ERROR: Probably file is not loaded.")
 
     def show_table(self):
         freq_cdf = df = pd.DataFrame(
-            data={'Frequency': [1. / self.curr_per_n], 'Period': [self.curr_per_n]}).round(
+            data={'Frequency': [1. / self.curr_per], 'Period': [self.curr_per]}).round(
             5)  # Create table data
-        # freq_cdf = df = pd.DataFrame(
-        #     data={'Frequency': [1./self.curr_per], 'Period': [self.curr_per], 'Amplitude': [self.curr_ampl]}).round(
-        #     3)  # Create table data
         self._freqtm = TableModel()  # Create table model
         self._freqtm.update(freq_cdf)
         self._freqtv = self.freq_list
@@ -375,19 +390,18 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # self._freqtv.resizeRowsToContents()
 
     def onMouseClicked(self, point):
-        if point.button() == 1:
+        self.clicked_point = point
+        if self.clicked_point.button() == 1:
             # print(point)
             # tt = QtCore.QPointF(point.pos()[0], point.pos()[1])
             tt = self.current_point
             self.mouse_x = self.dft.plotItem.vb.mapSceneToView(tt).x()
             self.mouse_y = self.dft.plotItem.vb.mapSceneToView(tt).y()
             self.curr_per = 1. / self.mouse_x
-            self.curr_per_n = self.curr_per
-            self.plot_ph()  # update phase plot
             self.show_table()  # update frequency list
-            self.plot_line()  # plot vertical line
-            self.freq_slider.setValue(0)  # reset slider
+            self.update_line()  # update vertical line
             self.phase_shifter.setValue(50)  # reset phase shifter
+            self.plot_ph()  # update phase plot
 
     def onMouseMoved(self, point):
         # print(point)
@@ -415,23 +429,23 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(int(self.startf)) + ' ' + str(int(
             self.endf)) + ' ' + str(int(self.acc)) + ' ' + self.dir_path)
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
-        self.smooth_spin.setValue(int(len(self.time) / 10))
+        self.curr_per = 1. / self.freq[np.where(self.ampl == max(self.ampl[self.freq > 0.3]))[0][0]]
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph
         self.plot_ph()  # plot dft graph
         self.show_table()  # update frequency list
+        self.plot_line()
         self.state_changed()
-        self.freq_slider.setValue(0)  # reset slider
         self.phase_shifter.setValue(50)  # reset phase shifter
+        self.smooth_spin.setValue(int(len(self.time) / 10))
 
     def populate(self):
         path = QtCore.QDir.currentPath()
-        self.model = QtWidgets.QFileSystemModel()
-        self.model.setRootPath((QtCore.QDir.rootPath()))
-        self.treeView.setModel(self.model)
-        self.treeView.setRootIndex(self.model.index(path))
+        self.popmodel.setRootPath((QtCore.QDir.rootPath()))
+        self.treeView.setModel(self.popmodel)
+        self.treeView.setRootIndex(self.popmodel.index(path))
         # self.treeView.setSortingEnabled(True)
-        for i in range(self.model.columnCount()):
+        for i in range(self.popmodel.columnCount()):
             self.treeView.hideColumn(i + 1)
 
     def plot_ph(self):
@@ -444,9 +458,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.phase = np.array(self.phase)
             self.flux_ph = np.array(self.flux_ph)
             self.ph.clear()
-            self.ph.plot(np.r_[self.phase, self.phase + 1], np.r_[self.flux_ph, self.flux_ph], pen=None, symbol='o',
-                         symbolSize=2.5,
-                         symbolPen=self.sympen, symbolBrush=self.sympen)
+            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                         symbolBrush=self.sympen)
             self.ph.autoRange()
 
     def plot_lc(self):
@@ -457,15 +470,15 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                          symbolBrush=self.sympen)
             self.lc.autoRange()
 
-    def update_line(self):
+    def plot_line(self):
         try:
             self.dft.removeItem(self.line_curr_freq)
         except AttributeError:
             pass
-        self.line_curr_freq = pg.InfiniteLine(pos=1. / self.curr_per_n, pen=self.redpen)
+        self.line_curr_freq = pg.InfiniteLine(pos=1. / self.curr_per, pen=self.redpen)
         self.dft.addItem(self.line_curr_freq)
 
-    def plot_line(self):
+    def update_line(self):  # plot when clicked
         try:
             self.dft.removeItem(self.line_curr_freq)
         except AttributeError:
@@ -476,8 +489,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def plot_dft(self):
         self.dft.setBackground('#1C1717')
         if self.file_path != 'first_run':
-            self.curr_per_n = 1. / self.freq[np.where(self.ampl == max(self.ampl[self.freq > 0.3]))[0][0]]
-            self.curr_per = self.curr_per_n
+            self.curr_per = 1. / self.freq[np.where(self.ampl == max(self.ampl[self.freq > 0.3]))[0][0]]
             self.curr_ampl = max(self.ampl[self.freq > 0.3])
             self.max_per = self.curr_per
             self.dft.clear()

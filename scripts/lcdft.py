@@ -205,7 +205,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.current_point = [
             0]  # needed, because sigMouseClicked and sigMouseMoved give slighlty different values (moved is correct)
         self.time, self.flux, self.ferr = [0, 0, 0]
-        self.flux_ph, self.flux_smoothed, self.phase = [0, 0, 0]
+        self.ferr_ph, self.flux_ph, self.flux_smoothed, self.phase = [0, 0, 0, 0]
         self.freq, self.ampl = [0, 0]
         # --------------------------- Mouse position -------------------------------- #
 
@@ -280,14 +280,14 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.acc = self.acc_spin.value()
 
     def phase_shift(self):
-        print("phase_shift executed")
         self.shift_p = (float(self.phase_shifter.value()) - 50.) / 100. * self.curr_per
         self.phase = ((self.time + self.shift_p) % self.curr_per) / self.curr_per
-        temp = zip(self.phase, self.flux)
+        temp = zip(self.phase, self.flux, self.ferr)
         temp = sorted(temp)
-        self.phase, self.flux_ph = zip(*temp)
+        self.phase, self.flux_ph, self.ferr_ph = zip(*temp)
         self.phase = np.array(self.phase)
         self.flux_ph = np.array(self.flux_ph)
+        self.ferr_ph = np.array(self.ferr_ph)
         self.state_changed()
 
     def dft_clicked(self):
@@ -300,82 +300,63 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.lc.autoRange()
 
     def state_changed(self):  # click_flag to know if is executed by sigMouseClick
-        # try:
-        print('state changed executed')
-        # print(self.phase)
-        # temp = zip(self.phase, self.flux)
-        # temp = sorted(temp)
-        # self.phase, self.flux_ph = zip(*temp)
-        # self.phase = np.array(self.phase)
-        # self.flux_ph = np.array(self.flux_ph)
-        self.flux_smoothed = bcsmooth(self.flux_ph, self.smooth_spin.value())
-        err_lc = pg.ErrorBarItem(x=self.time, y=self.flux, height=self.ferr, beam=0.0,
-                                 pen={'color': 'w', 'width': 0})
-        err_ph = pg.ErrorBarItem(x=self.phase, y=self.flux_ph, height=self.ferr, beam=0.0,
-                                 pen={'color': 'w', 'width': 0})
+        try:
+            self.flux_smoothed = bcsmooth(self.flux_ph, self.smooth_spin.value())
+            err_lc = pg.ErrorBarItem(x=self.time, y=self.flux, height=self.ferr, beam=0.0,
+                                     pen={'color': 'w', 'width': 0})
+            err_ph = pg.ErrorBarItem(x=self.phase, y=self.flux_ph, height=self.ferr_ph, beam=0.0,
+                                     pen={'color': 'w', 'width': 0})
 
-        if self.errors.isChecked() is True and self.smooth.isChecked() is True:
-            self.lc.clear()
-            self.ph.clear()
+            if self.errors.isChecked() is True and self.smooth.isChecked() is True:
+                self.lc.clear()
+                self.ph.clear()
 
-            self.lc.addItem(err_lc)
-            self.ph.addItem(err_ph)
+                self.lc.addItem(err_lc)
+                self.ph.addItem(err_ph)
 
-            self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                         symbolBrush=self.sympen)
-            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5,
-                         symbolPen=self.sympen,
-                         symbolBrush=self.sympen)
-            self.ph.plot(self.phase, self.flux_smoothed, pen=None, symbol='o', symbolSize=2.5,
-                         symbolPen=self.symgrepen,
-                         symbolBrush=self.symgrepen)
-            # if (phase_flag is False) and (click_flag is True):
-            #     self.ph.autoRange()
-            #     self.lc.autoRange()
+                self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                             symbolBrush=self.sympen)
+                self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5,
+                             symbolPen=self.sympen,
+                             symbolBrush=self.sympen)
+                self.ph.plot(self.phase, self.flux_smoothed, pen=None, symbol='o', symbolSize=2.5,
+                             symbolPen=self.symgrepen,
+                             symbolBrush=self.symgrepen)
 
-        elif self.errors.isChecked() is False and self.smooth.isChecked() is True:
-            self.lc.clear()
-            self.ph.clear()
+            elif self.errors.isChecked() is False and self.smooth.isChecked() is True:
+                self.lc.clear()
+                self.ph.clear()
 
-            self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                         symbolBrush=self.sympen)
-            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5,
-                         symbolPen=self.sympen,
-                         symbolBrush=self.sympen)
-            self.ph.plot(self.phase, self.flux_smoothed, pen=None, symbol='o', symbolSize=2.5,
-                         symbolPen=self.symgrepen,
-                         symbolBrush=self.symgrepen)
-            # if (phase_flag is False) and (click_flag is True):
-            #     self.ph.autoRange()
-            #     # self.lc.autoRange()
+                self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                             symbolBrush=self.sympen)
+                self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5,
+                             symbolPen=self.sympen,
+                             symbolBrush=self.sympen)
+                self.ph.plot(self.phase, self.flux_smoothed, pen=None, symbol='o', symbolSize=2.5,
+                             symbolPen=self.symgrepen,
+                             symbolBrush=self.symgrepen)
 
-        elif self.errors.isChecked() is True and self.smooth.isChecked() is False:
-            self.lc.clear()
-            self.ph.clear()
+            elif self.errors.isChecked() is True and self.smooth.isChecked() is False:
+                self.lc.clear()
+                self.ph.clear()
 
-            self.lc.addItem(err_lc)
-            self.ph.addItem(err_ph)
+                self.lc.addItem(err_lc)
+                self.ph.addItem(err_ph)
 
-            self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                         symbolBrush=self.sympen)
-            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                         symbolBrush=self.sympen)
-            # if (phase_flag is False) and (click_flag is True):
-            #     self.ph.autoRange()
-            #     self.lc.autoRange()
+                self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                             symbolBrush=self.sympen)
+                self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                             symbolBrush=self.sympen)
 
-        elif self.errors.isChecked() is False and self.smooth.isChecked() is False:
-            self.lc.clear()
-            self.ph.clear()
-            self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                         symbolBrush=self.sympen)
-            self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                         symbolBrush=self.sympen)
-            # if (phase_flag is False) and (click_flag is True):
-            #     self.ph.autoRange()
-            #     self.lc.autoRange()
-        # except TypeError:
-        # print("ERROR: Probably file is not loaded.")
+            elif self.errors.isChecked() is False and self.smooth.isChecked() is False:
+                self.lc.clear()
+                self.ph.clear()
+                self.lc.plot(self.time, self.flux, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                             symbolBrush=self.sympen)
+                self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
+                             symbolBrush=self.sympen)
+        except TypeError:
+            print("ERROR: Probably file is not loaded.")
 
     def show_table(self):
         freq_cdf = df = pd.DataFrame(
@@ -452,11 +433,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.ph.setBackground('#1C1717')
         if self.file_path != 'first_run':
             self.phase = (self.time % self.curr_per) / self.curr_per
-            temp = zip(self.phase, self.flux)
+            temp = zip(self.phase, self.flux, self.ferr)
             temp = sorted(temp)
-            self.phase, self.flux_ph = zip(*temp)
+            self.phase, self.flux_ph, self.ferr_ph = zip(*temp)
             self.phase = np.array(self.phase)
             self.flux_ph = np.array(self.flux_ph)
+            self.ferr_ph = np.array(self.ferr_ph)
             self.ph.clear()
             self.ph.plot(self.phase, self.flux_ph, pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
                          symbolBrush=self.sympen)

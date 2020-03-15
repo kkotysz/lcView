@@ -9,6 +9,7 @@ import numpy as np
 from os import system
 import os
 from boxcar import smooth as bcsmooth
+import subprocess
 
 dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1], '')
 qtCreatorFile = dir_path + "lcdft.ui"  # Enter file here.
@@ -157,9 +158,14 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         #                                                                             #
         # --------------------------------------------------------------------------- #
 
+    def progress_bar(self):
+        deltaT = self.time[-1] - self.time[0]
+        self.max_progress = int((self.endf - self.startf) * self.acc * deltaT)
+        self.dftprogress.setValue(int(self.wc_process/self.max_progress*100))
+
     def phase_clicked(self):
         try:
-            self.curr_per = 1./self.phase_spin.value()
+            self.curr_per = 1. / self.phase_spin.value()
             self.show_table()  # update frequency list
             self.update_line()  # update vertical line
             self.phase_slider.setValue(500)  # reset phase shifter
@@ -248,6 +254,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.show_table()  # update frequency list
             self.update_line()  # update vertical line
             self.phase_slider.setValue(500)  # reset phase shifter
+            self.phase_spin.setValue(1. / self.curr_per)
             self.plot_ph()  # update phase plot
             self.error_changed()
             self.smooth_changed()
@@ -278,8 +285,24 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         except AttributeError:
             pass
         self.time, self.flux, self.ferr = np.loadtxt(self.file_path, unpack=True)
-        system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(float(self.startf)) + ' ' + str(int(
-            self.endf)) + ' ' + str(int(self.acc)) + ' ' + self.dir_path)
+        try:
+            subprocess.check_output(['rm', 'lcf.trf'])
+        except subprocess.CalledProcessError:
+            pass
+        dft_process = subprocess.Popen(
+            ['bash', self.dir_path + 'lcdft.bash', self.file_path, str(float(self.startf)), str(int(self.endf)),
+             str(int(self.acc)), self.dir_path], stdout=subprocess.DEVNULL)
+        while True:
+            if dft_process.poll() is None:
+                try:
+                    self.wc_process = int(subprocess.check_output(['wc', 'lcf.trf'], stderr=subprocess.STDOUT).split()[0].decode('utf-8'))
+                    self.progress_bar()
+                except subprocess.CalledProcessError:
+                    pass
+            else:
+                self.dftprogress.setValue(100)
+                break
+
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
         self.curr_per = 1. / self.freq[np.where(self.ampl == max(self.ampl[self.freq > 0.3]))[0][0]]
         self.sort_phases()
@@ -293,6 +316,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.hide_phase_changed()
         self.phase_slider.setValue(500)  # reset phase shifter
         self.smooth_spin.setValue(int(len(self.time) / 10))
+        self.phase_spin.setValue(1./self.curr_per)
         self.ph.autoRange()
         self.lc.autoRange()
 

@@ -253,7 +253,14 @@
       <option name="project" value="LOCAL" />
       <updated>1584227611468</updated>
     </task>
-    <option name="localTasksCounter" value="20" />
+    <task id="LOCAL-00020" summary="added phase button + switch on/off phase curve + float precision for START freq">
+      <created>1584275599345</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1584275599345</updated>
+    </task>
+    <option name="localTasksCounter" value="21" />
     <servers />
   </component>
   <component name="Vcs.Log.History.Properties">
@@ -280,7 +287,8 @@
     <MESSAGE value="fix for errors in phased plot" />
     <MESSAGE value="fix for small errors + changed phase slider" />
     <MESSAGE value="fix for small errors" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix for small errors" />
+    <MESSAGE value="added phase button + switch on/off phase curve + float precision for START freq" />
+    <option name="LAST_COMMIT_MESSAGE" value="added phase button + switch on/off phase curve + float precision for START freq" />
   </component>
   <component name="WindowStateProjectService">
     <state x="555" y="201" width="800" height="677" key="#Inspections" timestamp="1583842947896">
@@ -300,11 +308,11 @@
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="889" y="275" width="337" height="488" key="#xdebugger.XInspectDialog/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584202130033" />
-    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584227611421">
+    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584275599279">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115992107" />
-    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584227611421" />
+    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584275599279" />
     <state x="743" y="307" width="424" height="484" key="FileChooserDialogImpl" timestamp="1584201939006">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
@@ -358,11 +366,11 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="831" y="248" width="247" height="583" key="VCS.ChangeListViewerDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584005577710" />
-    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584227614879">
+    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584275602475">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115993503" />
-    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584227614879" />
+    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584275602475" />
     <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584108343618">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

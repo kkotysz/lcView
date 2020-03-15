@@ -49,10 +49,10 @@
         <number>0</number>
        </property>
        <property name="leftMargin">
-        <number>0</number>
+        <number>1</number>
        </property>
        <property name="topMargin">
-        <number>0</number>
+        <number>1</number>
        </property>
        <property name="rightMargin">
         <number>0</number>
@@ -62,6 +62,12 @@
        </property>
        <item>
         <widget class="QTabWidget" name="tabWidget">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>0</height>
+          </size>
+         </property>
          <property name="layoutDirection">
           <enum>Qt::LeftToRight</enum>
          </property>
@@ -84,6 +90,12 @@
           <bool>false</bool>
          </property>
          <widget class="QWidget" name="tab1">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>0</height>
+           </size>
+          </property>
           <property name="layoutDirection">
            <enum>Qt::LeftToRight</enum>
           </property>
@@ -155,6 +167,12 @@
            </property>
            <item>
             <widget class="PlotWidget" name="ph">
+             <property name="frameShape">
+              <enum>QFrame::NoFrame</enum>
+             </property>
+             <property name="lineWidth">
+              <number>0</number>
+             </property>
              <property name="dragMode">
               <enum>QGraphicsView::NoDrag</enum>
              </property>
@@ -205,10 +223,10 @@
         <number>0</number>
        </property>
        <property name="topMargin">
-        <number>0</number>
+        <number>5</number>
        </property>
        <property name="rightMargin">
-        <number>0</number>
+        <number>1</number>
        </property>
        <property name="bottomMargin">
         <number>0</number>
@@ -226,13 +244,35 @@
            <number>0</number>
           </property>
           <property name="rightMargin">
-           <number>0</number>
+           <number>2</number>
           </property>
           <property name="bottomMargin">
            <number>0</number>
           </property>
           <item>
+           <spacer name="horizontalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Fixed</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>28</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
            <widget class="QCheckBox" name="errors">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>0</height>
+             </size>
+            </property>
             <property name="font">
              <font>
               <weight>75</weight>
@@ -246,6 +286,12 @@
           </item>
           <item>
            <widget class="QCheckBox" name="smooth">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>0</height>
+             </size>
+            </property>
             <property name="font">
              <font>
               <weight>75</weight>
@@ -259,6 +305,18 @@
           </item>
           <item>
            <widget class="QSpinBox" name="smooth_spin">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>60</width>
+              <height>16777215</height>
+             </size>
+            </property>
             <property name="minimum">
              <number>1</number>
             </property>
@@ -272,6 +330,22 @@
              <number>599</number>
             </property>
            </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer_3">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Fixed</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>28</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
           </item>
          </layout>
         </widget>
@@ -378,6 +452,12 @@
           </property>
           <item>
            <widget class="QDoubleSpinBox" name="start_spin">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>25</height>
+             </size>
+            </property>
             <property name="maximumSize">
              <size>
               <width>50</width>
@@ -388,6 +468,12 @@
           </item>
           <item>
            <widget class="QSpinBox" name="end_spin">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>25</height>
+             </size>
+            </property>
             <property name="maximumSize">
              <size>
               <width>50</width>
@@ -404,10 +490,16 @@
           </item>
           <item>
            <widget class="QSpinBox" name="acc_spin">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>25</height>
+             </size>
+            </property>
             <property name="maximumSize">
              <size>
               <width>50</width>
-              <height>16777215</height>
+              <height>25</height>
              </size>
             </property>
             <property name="value">
@@ -420,7 +512,7 @@
             <property name="minimumSize">
              <size>
               <width>0</width>
-              <height>0</height>
+              <height>25</height>
              </size>
             </property>
             <property name="maximumSize">
@@ -482,6 +574,12 @@
           </property>
           <item>
            <widget class="QCheckBox" name="hide_phase">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>25</height>
+             </size>
+            </property>
             <property name="maximumSize">
              <size>
               <width>80</width>
@@ -527,6 +625,12 @@
           </item>
           <item>
            <widget class="QDoubleSpinBox" name="phase_spin">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>25</height>
+             </size>
+            </property>
             <property name="maximumSize">
              <size>
               <width>70</width>
@@ -549,6 +653,12 @@
           </item>
           <item>
            <widget class="QPushButton" name="phasebutton">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>25</height>
+             </size>
+            </property>
             <property name="maximumSize">
              <size>
               <width>100</width>
@@ -578,6 +688,12 @@
        </item>
        <item>
         <widget class="QTreeView" name="treeView">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>25</height>
+          </size>
+         </property>
          <property name="frameShadow">
           <enum>QFrame::Plain</enum>
          </property>

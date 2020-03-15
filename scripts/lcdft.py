@@ -2,11 +2,11 @@
 
 import sys
 from PyQt5 import QtCore, QtGui, uic, QtWidgets
+import breeze_resources
 import pyqtgraph as pg
 import pandas as pd
 import numpy as np
 # from astropy import units as u
-from os import system
 import os
 from boxcar import smooth as bcsmooth
 import subprocess
@@ -79,11 +79,13 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.symbckpen = (24, 24, 24)
         self.sympen = (240, 240, 240)
         self.symgrepen = (24, 240, 24)
+        self.symyelpen = (240, 240, 24)
 
         self.redpen = pg.mkPen(color=self.symredpen)
         self.bckpen = pg.mkPen(color=self.symbckpen)
         self.whipen = pg.mkPen(color=self.sympen)
         self.grepen = pg.mkPen(color=self.symgrepen)
+        self.yelpen = pg.mkPen(color=self.symyelpen)
 
         # Initialize plots to connect with mouse
         self.ph.setBackground('#1C1717')
@@ -158,8 +160,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         #                                                                             #
         # --------------------------------------------------------------------------- #
 
+    # def change_bar_color(self, color):
+    #     template_css = """QProgressBar::chunk { background-color: %s; }"""
+    #     css = template_css % color
+    #     self.setStyleSheet(css)
     def progress_bar(self):
-        deltaT = self.time[-1] - self.time[0]
+        deltaT = np.ptp(self.time)
         self.max_progress = int((self.endf - self.startf) * self.acc * deltaT)
         self.dftprogress.setValue(int(self.wc_process/self.max_progress*100))
 
@@ -272,7 +278,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.dft.removeItem(self.hover_curr_freq)
         except AttributeError:
             pass
-        self.hover_curr_freq = pg.InfiniteLine(pos=mousePoint_dft.x(), pen=self.whipen)
+        self.hover_curr_freq = pg.InfiniteLine(pos=mousePoint_dft.x(), pen=self.yelpen)
         self.dft.addItem(self.hover_curr_freq)
         self.statusBar().showMessage(
             '{:2s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}'.format(
@@ -292,6 +298,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         dft_process = subprocess.Popen(
             ['bash', self.dir_path + 'lcdft.bash', self.file_path, str(float(self.startf)), str(int(self.endf)),
              str(int(self.acc)), self.dir_path], stdout=subprocess.DEVNULL)
+        self.dftprogress.setStyleSheet("QProgressBar::chunk:horizontal {background-color: rgb(24, 120, 240);}")
         while True:
             if dft_process.poll() is None:
                 try:
@@ -301,10 +308,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                     pass
             else:
                 self.dftprogress.setValue(100)
+                self.dftprogress.setStyleSheet("QProgressBar::chunk:horizontal {background-color: rgb(120, 240, 24);}")
                 break
 
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
-        self.curr_per = 1. / self.freq[np.where(self.ampl == max(self.ampl[self.freq > 0.3]))[0][0]]
+        self.curr_per = 1. / self.freq[np.where(self.ampl == np.max(self.ampl[self.freq > 0.3]))[0][0]]
+        self.curr_ampl = np.max(self.ampl[self.freq > 0.3])
         self.sort_phases()
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph
@@ -315,7 +324,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.smooth_changed()
         self.hide_phase_changed()
         self.phase_slider.setValue(500)  # reset phase shifter
-        self.smooth_spin.setValue(int(len(self.time) / 10))
+        self.smooth_spin.setValue(int(len(self.time) / 30))
         self.phase_spin.setValue(1./self.curr_per)
         self.ph.autoRange()
         self.lc.autoRange()
@@ -345,14 +354,18 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.dft.removeItem(self.line_curr_freq)
         except AttributeError:
             pass
+        # self.line_curr_freq = pg.InfiniteLine(pos=1 / self.curr_per, pen=self.redpen, label=str(self.curr_ampl))
         self.line_curr_freq = pg.InfiniteLine(pos=1 / self.curr_per, pen=self.redpen)
         self.dft.addItem(self.line_curr_freq)
 
     def plot_dft(self):
         if self.file_path != 'first_run':
             self.curve_dft.setData(self.freq, self.ampl)
-            if self.hover_curr_freq.value() > self.endf:
-                self.hover_curr_freq.setValue(self.endf)
+            try:
+                if self.hover_curr_freq.value() > self.endf:
+                    self.hover_curr_freq.setValue(self.endf)
+            except AttributeError:
+                pass
             self.dft.autoRange()
 
     def closeEvent(self, event):
@@ -372,8 +385,15 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(dir_path + 'kzhya_ico-64.png'))
-    app.setStyle('Breeze')
+
+    # set stylesheet
+    file = QtCore.QFile(dir_path + 'styles/light.qss')
+    file.open(QtCore.QFile.ReadOnly | QtCore.QFile.Text)
+    stream = QtCore.QTextStream(file)
+    app.setStyleSheet(stream.readAll())
+
     app.setApplicationName('lcView')
+
     window = lcdftMain()
     window.move(0, 0)
     window.show()

@@ -134,11 +134,13 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.max_per = 1.
         self.errors.stateChanged.connect(self.error_changed)
         self.smooth.stateChanged.connect(self.smooth_changed)
+        self.hide_phase.stateChanged.connect(self.hide_phase_changed)
         self.smooth_spin.valueChanged.connect(self.smooth_changed)
         self.start_spin.valueChanged.connect(self.getdftrange)
         self.end_spin.valueChanged.connect(self.getdftrange)
         self.acc_spin.valueChanged.connect(self.getdftrange)
-        self.recalc.clicked.connect(self.onClicked)
+        self.recalcbutton.clicked.connect(self.onClicked)
+        self.phasebutton.clicked.connect(self.phase_clicked)
         # --------------------------------------------------------------------------- #
 
         # -------------------- Start table with frequency data ---------------------- #
@@ -154,6 +156,19 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # self._freqtv.resizeRowsToContents()
         #                                                                             #
         # --------------------------------------------------------------------------- #
+
+    def phase_clicked(self):
+        try:
+            self.curr_per = 1./self.phase_spin.value()
+            self.show_table()  # update frequency list
+            self.update_line()  # update vertical line
+            self.phase_slider.setValue(500)  # reset phase shifter
+            self.plot_ph()  # update phase plot
+            self.error_changed()
+            self.smooth_changed()
+            self.hide_phase_changed()
+        except ZeroDivisionError:
+            print("Phase value cannot be zero.")
 
     def sort_phases(self):
         self.phase = (np.fmod(self.time + self.shift_p, self.curr_per)) / self.curr_per
@@ -175,6 +190,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.sort_phases()
         self.error_changed()
         self.smooth_changed()
+        self.hide_phase_changed()
 
     def error_changed(self):
         if self.errors.isChecked():
@@ -196,6 +212,14 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         else:
             self.curve_ph_smooth.setData(x=[], y=[])
             self.curve_ph_smooth.update()
+
+    def hide_phase_changed(self):
+        if self.hide_phase.isChecked():
+            self.curve_ph.setData(x=[], y=[])
+            self.curve_ph.update()
+        else:
+            self.curve_ph.setData(x=self.phase, y=self.flux_ph)
+            self.curve_ph.update()
 
         # except TypeError:
         #     print("ERROR: Probably file is not loaded.")
@@ -227,6 +251,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.plot_ph()  # update phase plot
             self.error_changed()
             self.smooth_changed()
+            self.hide_phase_changed()
             self.ph.autoRange()
             self.lc.autoRange()
 
@@ -253,7 +278,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         except AttributeError:
             pass
         self.time, self.flux, self.ferr = np.loadtxt(self.file_path, unpack=True)
-        system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(int(self.startf)) + ' ' + str(int(
+        system('bash ' + self.dir_path + 'lcdft.bash ' + self.file_path + ' ' + str(float(self.startf)) + ' ' + str(int(
             self.endf)) + ' ' + str(int(self.acc)) + ' ' + self.dir_path)
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
         self.curr_per = 1. / self.freq[np.where(self.ampl == max(self.ampl[self.freq > 0.3]))[0][0]]
@@ -265,6 +290,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.update_line()
         self.error_changed()
         self.smooth_changed()
+        self.hide_phase_changed()
         self.phase_slider.setValue(500)  # reset phase shifter
         self.smooth_spin.setValue(int(len(self.time) / 10))
         self.ph.autoRange()

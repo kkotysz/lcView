@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="fix for small errors + changed phase slider">
+    <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lcdft.ui" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.ui" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -245,7 +246,14 @@
       <option name="project" value="LOCAL" />
       <updated>1584226159143</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="fix for small errors">
+      <created>1584227611468</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1584227611468</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="Vcs.Log.History.Properties">
@@ -271,7 +279,8 @@
     <MESSAGE value="removed freq slider + small plotting changes" />
     <MESSAGE value="fix for errors in phased plot" />
     <MESSAGE value="fix for small errors + changed phase slider" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix for small errors + changed phase slider" />
+    <MESSAGE value="fix for small errors" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix for small errors" />
   </component>
   <component name="WindowStateProjectService">
     <state x="555" y="201" width="800" height="677" key="#Inspections" timestamp="1583842947896">
@@ -291,11 +300,11 @@
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="889" y="275" width="337" height="488" key="#xdebugger.XInspectDialog/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584202130033" />
-    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584226167473">
+    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2" timestamp="1584227611421">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="624" y="139" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115992107" />
-    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584226167473" />
+    <state x="624" y="158" width="661" height="802" key="CommitChangelistDialog2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584227611421" />
     <state x="743" y="307" width="424" height="484" key="FileChooserDialogImpl" timestamp="1584201939006">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
@@ -349,11 +358,11 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="831" y="248" width="247" height="583" key="VCS.ChangeListViewerDialog/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584005577710" />
-    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584226161237">
+    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2" timestamp="1584227614879">
       <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="555" y="276" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584115993503" />
-    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584226161237" />
+    <state x="555" y="287" width="800" height="528" key="Vcs.Push.Dialog.v2/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584227614879" />
     <state x="776" y="460" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1584108343618">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
@@ -366,10 +375,11 @@
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="666" y="156" width="588" height="768" key="find.popup/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584007102317" />
-    <state x="623" y="239" width="672" height="678" key="search.everywhere.popup" timestamp="1584018538639">
-      <screen x="0" y="0" width="1920" height="1080" />
+    <state x="623" y="252" width="672" height="636" key="search.everywhere.popup" timestamp="1584275012737">
+      <screen x="0" y="28" width="1920" height="1012" />
     </state>
     <state x="623" y="239" width="672" height="678" key="search.everywhere.popup/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1584018538639" />
+    <state x="623" y="252" width="672" height="636" key="search.everywhere.popup/0.1080.1920.1080/0.28.1920.1012@0.28.1920.1012" timestamp="1584275012737" />
     <state x="685" y="455" width="540" height="170" key="vcs.readOnlyHandler.ReadOnlyStatusDialog" timestamp="1583859028551">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>

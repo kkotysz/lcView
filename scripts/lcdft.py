@@ -22,7 +22,7 @@ class TableModel(QtCore.QAbstractTableModel):
         self.datatable = None
         self.colLabels = None
 
-    def update(self, datain):
+    def update_tm(self, datain):
         # print('Updating Model')
         self.datatable = datain
         self.colLabels = datain.columns.values
@@ -51,7 +51,6 @@ class TableModel(QtCore.QAbstractTableModel):
         if orientation == QtCore.Qt.Vertical and role == QtCore.Qt.DisplayRole:
             return QtCore.QVariant("%s" % str(section + 1))
         return QtCore.QVariant()
-
 
 class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
@@ -144,37 +143,56 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.acc_spin.valueChanged.connect(self.getdftrange)
         self.recalcbutton.clicked.connect(self.onClicked)
         self.phasebutton.clicked.connect(self.phase_clicked)
+        self.addfreqbutton.clicked.connect(self.add_clicked)
+        self.remfreqbutton.clicked.connect(self.rem_clicked)
         # --------------------------------------------------------------------------- #
 
         # -------------------- Start table with frequency data ---------------------- #
         #                                                                             #
-        freq_cdf = df = pd.DataFrame(data={'Frequency': [], 'Period': []})  # Create table data
+        self.freq_cdf = pd.DataFrame(data={'Frequency': [], 'Period': []})  # Create table data
         # freq_cdf = df = pd.DataFrame(data={'Frequency': [], 'Period': [], 'Amplitude': []})  # Create table data
-        self._freqtm = TableModel()  # Create table model
-        self._freqtm.update(freq_cdf)
-        self._freqtv = self.freq_list
-        self._freqtv.setModel(self._freqtm)
-        self._freqtv.horizontalHeader().setResizeMode(QtGui.QHeaderView.Stretch)
-        # self._freqtv.resizeColumnsToContents()
-        # self._freqtv.resizeRowsToContents()
+        self.freqtm = TableModel()  # Create table model
+        self.freqtm.update_tm(self.freq_cdf)
+        self.freqtv = self.freq_list
+        self.freqtv.setModel(self.freqtm)
+        self.freqtv.horizontalHeader().setResizeMode(QtGui.QHeaderView.Stretch)
+        self.freqtv.clicked.connect(self.table_clicked)
+        # self.freqtv.setSortingEnabled(True)
+
+        # self.freqtv.resizeColumnsToContents()
+        # self.freqtv.resizeRowsToContents()
         #                                                                             #
         # --------------------------------------------------------------------------- #
 
-    # def change_bar_color(self, color):
-    #     template_css = """QProgressBar::chunk { background-color: %s; }"""
-    #     css = template_css % color
-    #     self.setStyleSheet(css)
+    def add_clicked(self):
+        new_cdf = pd.DataFrame({'Frequency': [1. / self.curr_per], 'Period': [self.curr_per]}).round(5)
+        self.freq_cdf = self.freq_cdf.append(new_cdf, ignore_index=True)
+        self.freq_cdf.index = range(self.freq_cdf.shape[0])
+        self.update_table()
+
+    def rem_clicked(self, item):
+        self.freq_cdf.index = range(self.freq_cdf.shape[0])
+        self.freq_cdf = self.freq_cdf.drop(self.freq_to_remove.row())
+        self.freq_to_remove = False
+        self.update_table()
+
+    def table_clicked(self, item):
+        self.freq_cdf.index = range(self.freq_cdf.shape[0])
+        self.phase_spin.setValue(float(item.data()))
+        self.freq_to_remove = item
+
+
     def progress_bar(self):
         deltaT = np.ptp(self.time)
         self.max_progress = int((self.endf - self.startf) * self.acc * deltaT)
-        self.dftprogress.setValue(int(self.wc_process/self.max_progress*100))
+        self.dftprogress.setValue(int(self.wc_process / self.max_progress * 100))
 
     def phase_clicked(self):
         try:
             self.curr_per = 1. / self.phase_spin.value()
-            self.show_table()  # update frequency list
+            # self.show_table()  # update frequency list
             self.update_line()  # update vertical line
-            self.phase_slider.setValue(500)  # reset phase shifter
+            self.phase_slider.setValue(499)  # reset phase shifter
             self.plot_ph()  # update phase plot
             self.error_changed()
             self.smooth_changed()
@@ -233,20 +251,25 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.curve_ph.setData(x=self.phase, y=self.flux_ph)
             self.curve_ph.update()
 
-        # except TypeError:
-        #     print("ERROR: Probably file is not loaded.")
+    def update_table(self):
+        self.freqtm = TableModel()  # Create table model
+        self.freqtm.update_tm(self.freq_cdf)
+        # self.freqtv = self.freq_list
+        self.freqtv.setModel(self.freqtm)
+        # self.freqtv.horizontalHeader().setResizeMode(QtGui.QHeaderView.Stretch)
+        # self.freqtv.resizeColumnsToContents()
+        # self.freqtv.resizeRowsToContents()
 
     def show_table(self):
-        freq_cdf = df = pd.DataFrame(
-            data={'Frequency': [1. / self.curr_per], 'Period': [self.curr_per]}).round(
-            5)  # Create table data
-        self._freqtm = TableModel()  # Create table model
-        self._freqtm.update(freq_cdf)
-        self._freqtv = self.freq_list
-        self._freqtv.setModel(self._freqtm)
-        self._freqtv.horizontalHeader().setResizeMode(QtGui.QHeaderView.Stretch)
-        # self._freqtv.resizeColumnsToContents()
-        # self._freqtv.resizeRowsToContents()
+        new_cdf = pd.DataFrame({'Frequency': [1. / self.curr_per], 'Period': [self.curr_per]}).round(5)
+        self.freq_cdf = new_cdf
+        self.freqtm = TableModel()  # Create table model
+        self.freqtm.update_tm(self.freq_cdf)
+        # self.freqtv = self.freq_list
+        self.freqtv.setModel(self.freqtm)
+        # self.freqtv.horizontalHeader().setResizeMode(QtGui.QHeaderView.Stretch)
+        # self.freqtv.resizeColumnsToContents()
+        # self.freqtv.resizeRowsToContents()
 
     def onMouseClicked(self, point):
         self.clicked_point = point
@@ -257,9 +280,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.mouse_x = self.dft.plotItem.vb.mapSceneToView(tt).x()
             self.mouse_y = self.dft.plotItem.vb.mapSceneToView(tt).y()
             self.curr_per = 1. / self.mouse_x
-            self.show_table()  # update frequency list
             self.update_line()  # update vertical line
-            self.phase_slider.setValue(500)  # reset phase shifter
+            self.phase_slider.setValue(499)  # reset phase shifter
             self.phase_spin.setValue(1. / self.curr_per)
             self.plot_ph()  # update phase plot
             self.error_changed()
@@ -298,11 +320,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         dft_process = subprocess.Popen(
             ['bash', self.dir_path + 'lcdft.bash', self.file_path, str(float(self.startf)), str(int(self.endf)),
              str(int(self.acc)), self.dir_path], stdout=subprocess.DEVNULL)
-        self.dftprogress.setStyleSheet("QProgressBar::chunk:horizontal {background-color: rgb(24, 120, 240);}")
+        self.dftprogress.setStyleSheet("QProgressBar::chunk:horizontal {background-color: #33A4DF;}")
         while True:
             if dft_process.poll() is None:
                 try:
-                    self.wc_process = int(subprocess.check_output(['wc', 'lcf.trf'], stderr=subprocess.STDOUT).split()[0].decode('utf-8'))
+                    self.wc_process = int(
+                        subprocess.check_output(['wc', 'lcf.trf'], stderr=subprocess.STDOUT).split()[0].decode('utf-8'))
                     self.progress_bar()
                 except subprocess.CalledProcessError:
                     pass
@@ -323,9 +346,9 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.error_changed()
         self.smooth_changed()
         self.hide_phase_changed()
-        self.phase_slider.setValue(500)  # reset phase shifter
+        self.phase_slider.setValue(499)  # reset phase shifter
         self.smooth_spin.setValue(int(len(self.time) / 30))
-        self.phase_spin.setValue(1./self.curr_per)
+        self.phase_spin.setValue(1. / self.curr_per)
         self.ph.autoRange()
         self.lc.autoRange()
 

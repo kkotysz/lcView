@@ -233,6 +233,18 @@
        </property>
        <item>
         <widget class="QWidget" name="switches" native="true">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>25</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>25</height>
+          </size>
+         </property>
          <layout class="QHBoxLayout" name="horizontalLayout">
           <property name="spacing">
            <number>0</number>
@@ -244,7 +256,7 @@
            <number>0</number>
           </property>
           <property name="rightMargin">
-           <number>2</number>
+           <number>0</number>
           </property>
           <property name="bottomMargin">
            <number>0</number>
@@ -352,6 +364,18 @@
        </item>
        <item>
         <widget class="QWidget" name="labels" native="true">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>15</height>
+          </size>
+         </property>
          <layout class="QHBoxLayout" name="horizontalLayout_7">
           <property name="spacing">
            <number>0</number>
@@ -434,6 +458,18 @@
        </item>
        <item>
         <widget class="QWidget" name="ranges" native="true">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>25</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>25</height>
+          </size>
+         </property>
          <layout class="QHBoxLayout" name="horizontalLayout_6">
           <property name="spacing">
            <number>0</number>
@@ -556,6 +592,18 @@
        </item>
        <item>
         <widget class="QWidget" name="phase_widget" native="true">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>25</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>25</height>
+          </size>
+         </property>
          <layout class="QHBoxLayout" name="horizontalLayout_4">
           <property name="spacing">
            <number>0</number>
@@ -691,11 +739,17 @@
          <property name="minimumSize">
           <size>
            <width>0</width>
-           <height>25</height>
+           <height>0</height>
           </size>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::StyledPanel</enum>
          </property>
          <property name="frameShadow">
           <enum>QFrame::Plain</enum>
+         </property>
+         <property name="lineWidth">
+          <number>0</number>
          </property>
         </widget>
        </item>
@@ -707,6 +761,53 @@
            <height>170</height>
           </size>
          </property>
+         <property name="frameShape">
+          <enum>QFrame::StyledPanel</enum>
+         </property>
+         <property name="frameShadow">
+          <enum>QFrame::Plain</enum>
+         </property>
+         <property name="lineWidth">
+          <number>0</number>
+         </property>
+         <property name="dragEnabled">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QWidget" name="addrem" native="true">
+         <layout class="QHBoxLayout" name="horizontalLayout_8">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QPushButton" name="addfreqbutton">
+            <property name="text">
+             <string>Add frequency</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="remfreqbutton">
+            <property name="text">
+             <string>Remove frequency</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
       </layout>

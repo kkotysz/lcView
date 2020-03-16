@@ -240,9 +240,9 @@ QMenuBar::item:pressed
 
 QMenu
 {
-    border: 0.1ex solid #BAB9B8;
+    border: 0.0ex solid #BAB9B8;
     color: #31363B;
-    margin: 0.2ex;
+    margin: 0.0ex;
 }
 
 QMenu::icon
@@ -252,7 +252,7 @@ QMenu::icon
 
 QMenu::item
 {
-    padding: 0.0ex 0ex 0.0ex 0ex;
+    padding: 1.0ex 6ex 1.0ex 3.0ex;
     margin-left: 0.5ex;
     border: 0.1ex solid transparent; /* reserve space for selection border */
 }
@@ -339,7 +339,7 @@ QAbstractItemView
 QWidget:focus,
 QMenuBar:focus
 {
-    border: 0.1ex solid #33A4DF;
+    border: 0.1ex solid #BAB9B8;
 }
 
 QTabWidget:focus,
@@ -687,9 +687,11 @@ QLineEdit:hover,
 QTextEdit:hover,
 QPlainTextEdit:hover,
 QAbstractView:hover,
-QTreeView:hover
+QTreeView:hover,
+QTreeView:focus,
+QTreeView:focus:hover
 {
-    border: 0.1ex solid #33A4DF;
+    border: 0.0ex solid #BAB9B8;
     color: #31363B;
 }
 
@@ -703,6 +705,7 @@ QAbstractView:hover:pressed,
 QTreeView:hover:pressed
 {
     background-color: #EFF0F1;
+    border: 0.0ex solid #BAB9B8;
 }
 
 QComboBox:on
@@ -1178,7 +1181,7 @@ QDockWidget::close-button:pressed
 QTreeView,
 QListView
 {
-    border: 0.1ex solid #BAB9B8;
+    border: 0.0ex solid #BAB9B8;
     background-color: #FCFCFC;
 }
 
@@ -1366,9 +1369,11 @@ QPushButton::menu-indicator
     left: 0.8ex;
 }
 
-QTableView
+QTableView,
+QTableView:focus:hover,
+QTableView:focus
 {
-    border: 0.1ex solid #BAB9B8;
+    border: 0.0ex solid #BAB9B8;
     gridline-color: #BAB9B8;
     background-color: #FCFCFC;
 }
@@ -1635,25 +1640,34 @@ QDoubleSpinBox::down-arrow:off
 QPushButton:hover
 {
     border: 0.1ex solid #3daef3;
+    background-color: #b9dae7;
     color: #31363B;
 }
 
-QPushButton:focus
+ QPushButton:focus
 {
-    background-color: qlineargradient(x1: 0.5, y1: 0.5 x2: 0.5, y2: 1, stop: 0 #4cbdff, stop: 0.5 #33a4e8);
-    color: white;
-}
+    color: #31363B;
+    background-color: qlineargradient(x1: 0.5, y1: 0.5 x2: 0.5, y2: 1, stop: 0 #EFF0F1, stop: 0.5 #eaebec);
+    border-width: 0.1ex;
+    border-color: #BAB9B8;
+    border-style: solid;
+    padding: 0.5ex;
+    border-radius: 0.2ex;
+    outline: none;
+ }
 
 QPushButton:focus:hover
 {
-    background-color: qlineargradient(x1: 0.5, y1: 0.5 x2: 0.5, y2: 1, stop: 0 #bedfec, stop: 0.5 #b9dae7);
+    border: 0.1ex solid #3daef3;
+    background-color: #b9dae7;
     color: #31363B;
 }
 
 QPushButton:focus:pressed,
 QPushButton:pressed
 {
-    background-color: qlineargradient(x1: 0.5, y1: 0.5 x2: 0.5, y2: 1, stop: 0 #bedfec, stop: 0.5 #b9dae7);
+    background-color: qlineargradient(x1: 0.5, y1: 0.5 x2: 0.5, y2: 1, stop: 0 #4cbdff, stop: 0.5 #33a4e8);
     color: #31363B;
+    border-color: #3daef3;
 }
 

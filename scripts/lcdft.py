@@ -125,6 +125,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.time, self.flux, self.ferr = [0, 0, 0]
         self.ferr_ph, self.flux_ph, self.flux_smoothed, self.phase = [0, 0, 0, 0]
         self.freq, self.ampl = [0, 0]
+        self.nofphases = int(self.phase_dial.value())
 
         # Initialize variables for dft range
         self.startf = self.start_spin.value()
@@ -145,6 +146,10 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phasebutton.clicked.connect(self.phase_clicked)
         self.addfreqbutton.clicked.connect(self.add_clicked)
         self.remfreqbutton.clicked.connect(self.rem_clicked)
+        self.phase_dial.valueChanged.connect(self.phase_dial_changed)
+
+        self.stylecombobox.addItems(["Light Mode", "Dark Mode"])
+        self.stylecombobox.activated[str].connect(self.selectionchange)
         # --------------------------------------------------------------------------- #
 
         # -------------------- Start table with frequency data ---------------------- #
@@ -163,6 +168,23 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # self.freqtv.resizeRowsToContents()
         #                                                                             #
         # --------------------------------------------------------------------------- #
+
+    def selectionchange(self, styleName):
+        if styleName == 'Light Mode':
+            file = QtCore.QFile(dir_path + 'styles/light.qss')
+        if styleName == 'Dark Mode':
+            file = QtCore.QFile(dir_path + 'styles/dark.qss')
+        file.open(QtCore.QFile.ReadOnly | QtCore.QFile.Text)
+        stream = QtCore.QTextStream(file)
+        self.setStyleSheet(stream.readAll())
+
+    def phase_dial_changed(self):
+        self.nofphases = int(self.phase_dial.value())
+        self.plot_ph()
+        self.error_changed()
+        self.smooth_changed()
+        self.hide_phase_changed()
+        self.ph.autoRange()
 
     def add_clicked(self):
         new_cdf = pd.DataFrame({'Frequency': [1. / self.curr_per], 'Period': [self.curr_per]}).round(5)
@@ -191,19 +213,17 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         try:
             self.curr_per = 1. / self.phase_spin.value()
             # self.show_table()  # update frequency list
-            self.update_line()  # update vertical line
-            self.phase_slider.setValue(499)  # reset phase shifter
             self.plot_ph()  # update phase plot
             self.error_changed()
             self.smooth_changed()
             self.hide_phase_changed()
+            self.update_line()  # update vertical line
+            self.phase_slider.setValue(499)  # reset phase shifter
         except ZeroDivisionError:
             print("Phase value cannot be zero.")
 
     def sort_phases(self):
-        self.phase = (np.fmod(self.time + self.shift_p, self.curr_per)) / self.curr_per
-        self.phase = ((self.time + self.shift_p) % self.curr_per) / self.curr_per
-        temp = sorted(zip(self.phase, self.flux, self.ferr))
+        temp = sorted(zip(self.phase, np.tile(self.flux, self.nofphases), np.tile(self.ferr, self.nofphases)))
         self.phase, self.flux_ph, self.ferr_ph = zip(*temp)
         self.phase = np.array(self.phase)
         self.flux_ph = np.array(self.flux_ph)
@@ -217,7 +237,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def phase_shift(self):
         self.shift_p = (float(self.phase_slider.value()) - 500.) / 1000. * self.curr_per
         self.plot_ph()
-        self.sort_phases()
+        # self.sort_phases()
         self.error_changed()
         self.smooth_changed()
         self.hide_phase_changed()
@@ -337,7 +357,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
         self.curr_per = 1. / self.freq[np.where(self.ampl == np.max(self.ampl[self.freq > 0.3]))[0][0]]
         self.curr_ampl = np.max(self.ampl[self.freq > 0.3])
-        self.sort_phases()
+        # self.sort_phases()
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph
         self.plot_ph()  # plot dft graph
@@ -363,6 +383,9 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
     def plot_ph(self):
         if self.file_path != 'first_run':
+            temp_phase = (np.fmod(self.time + self.shift_p, self.curr_per)) / self.curr_per
+            self.phase = np.tile(temp_phase, self.nofphases) + np.repeat(np.arange(0, self.nofphases), len(temp_phase))
+            print(self.nofphases)
             self.sort_phases()
             self.curve_ph.setData(x=self.phase, y=self.flux_ph)
             self.curve_ph.update()

@@ -203,7 +203,6 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phase_spin.setValue(float(item.data()))
         self.freq_to_remove = item
 
-
     def progress_bar(self):
         deltaT = np.ptp(self.time)
         self.max_progress = int((self.endf - self.startf) * self.acc * deltaT)
@@ -385,7 +384,6 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         if self.file_path != 'first_run':
             temp_phase = (np.fmod(self.time + self.shift_p, self.curr_per)) / self.curr_per
             self.phase = np.tile(temp_phase, self.nofphases) + np.repeat(np.arange(0, self.nofphases), len(temp_phase))
-            print(self.nofphases)
             self.sort_phases()
             self.curve_ph.setData(x=self.phase, y=self.flux_ph)
             self.curve_ph.update()
@@ -437,7 +435,6 @@ if __name__ == "__main__":
     file.open(QtCore.QFile.ReadOnly | QtCore.QFile.Text)
     stream = QtCore.QTextStream(file)
     app.setStyleSheet(stream.readAll())
-
     app.setApplicationName('lcView')
 
     window = lcdftMain()

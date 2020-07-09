@@ -386,6 +386,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.phase = np.tile(temp_phase, self.nofphases) + np.repeat(np.arange(0, self.nofphases), len(temp_phase))
             self.sort_phases()
             self.curve_ph.setData(x=self.phase, y=self.flux_ph)
+            self.curve_ph.getViewBox().invertY(True)
             self.curve_ph.update()
 
     def plot_lc(self):

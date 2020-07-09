@@ -1,9 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="BranchesTreeState">
+    <expand>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="LOCAL_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="REMOTE_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="REMOTE_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="GROUP_NODE:origin" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+    </expand>
+    <select />
+  </component>
   <component name="ChangeListManager">
     <list default="true" id="d25b7174-6e30-4938-863d-08bc726462b8" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/lcdft.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lcdft.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -280,7 +297,14 @@
       <option name="project" value="LOCAL" />
       <updated>1584459825484</updated>
     </task>
-    <option name="localTasksCounter" value="25" />
+    <task id="LOCAL-00025" summary="reverse axis">
+      <created>1594289382275</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1594289382275</updated>
+    </task>
+    <option name="localTasksCounter" value="26" />
     <servers />
   </component>
   <component name="Vcs.Log.History.Properties">
@@ -291,6 +315,17 @@
         <option value="3" />
         <option value="1" />
       </list>
+    </option>
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
     </option>
   </component>
   <component name="VcsManagerConfiguration">
@@ -312,12 +347,37 @@
     <MESSAGE value="visual changes" />
     <MESSAGE value="added frequency list" />
     <MESSAGE value="added mulitple phases + dark mode [not yet adjusted to layout]" />
-    <option name="LAST_COMMIT_MESSAGE" value="added mulitple phases + dark mode [not yet adjusted to layout]" />
+    <MESSAGE value="reverse axis" />
+    <option name="LAST_COMMIT_MESSAGE" value="reverse axis" />
   </component>
   <component name="WindowStateProjectService">
+    <state x="559" y="112" width="791" height="855" key="CommitChangelistDialog2" timestamp="1594289382156">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="559" y="112" width="791" height="855" key="CommitChangelistDialog2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1594289382156" />
     <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl" timestamp="1594289240813">
       <screen x="0" y="0" width="1920" height="1080" />
     </state>
     <state x="743" y="298" width="424" height="484" key="FileChooserDialogImpl/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1594289240813" />
+    <state width="1899" height="288" key="GridCell.Tab.0.bottom" timestamp="1594289390956">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="288" key="GridCell.Tab.0.bottom/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1594289390956" />
+    <state width="1899" height="288" key="GridCell.Tab.0.center" timestamp="1594289390956">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="288" key="GridCell.Tab.0.center/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1594289390956" />
+    <state width="1899" height="288" key="GridCell.Tab.0.left" timestamp="1594289390956">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="288" key="GridCell.Tab.0.left/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1594289390956" />
+    <state width="1899" height="288" key="GridCell.Tab.0.right" timestamp="1594289390956">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state width="1899" height="288" key="GridCell.Tab.0.right/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1594289390956" />
+    <state x="775" y="458" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1594289419775">
+      <screen x="0" y="0" width="1920" height="1080" />
+    </state>
+    <state x="775" y="458" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/0.1080.1920.1080/0.0.1920.1080@0.0.1920.1080" timestamp="1594289419775" />
   </component>
 </project>

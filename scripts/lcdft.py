@@ -391,6 +391,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def plot_lc(self):
         if self.file_path != 'first_run':
             self.curve_lc.setData(x=self.time, y=self.flux)
+            self.curve_lc.getViewBox().invertY(True)
             self.curve_lc.update()
 
     def update_line(self):  # plot when clicked

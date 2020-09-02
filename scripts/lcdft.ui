@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1314</width>
-    <height>868</height>
+    <width>1912</width>
+    <height>1177</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -226,7 +226,7 @@
         <number>0</number>
        </property>
        <property name="rightMargin">
-        <number>1</number>
+        <number>0</number>
        </property>
        <property name="bottomMargin">
         <number>0</number>
@@ -293,7 +293,7 @@
             </property>
             <property name="sizeHint" stdset="0">
              <size>
-              <width>28</width>
+              <width>15</width>
               <height>20</height>
              </size>
             </property>
@@ -375,7 +375,7 @@
             </property>
             <property name="sizeHint" stdset="0">
              <size>
-              <width>28</width>
+              <width>15</width>
               <height>20</height>
              </size>
             </property>
@@ -463,17 +463,14 @@
            </widget>
           </item>
           <item>
-           <spacer name="horizontalSpacer">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
+           <widget class="QCheckBox" name="invertyaxis">
+            <property name="text">
+             <string>Invert Y</string>
             </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
+            <property name="checked">
+             <bool>true</bool>
             </property>
-           </spacer>
+           </widget>
           </item>
          </layout>
         </widget>
@@ -579,6 +576,11 @@
               <height>16777215</height>
              </size>
             </property>
+            <property name="font">
+             <font>
+              <pointsize>8</pointsize>
+             </font>
+            </property>
             <property name="text">
              <string>RECALCULATE</string>
             </property>
@@ -592,7 +594,7 @@
          <property name="maximumSize">
           <size>
            <width>16777215</width>
-           <height>15</height>
+           <height>20</height>
           </size>
          </property>
          <property name="value">
@@ -677,7 +679,7 @@
             </property>
             <property name="maximumSize">
              <size>
-              <width>80</width>
+              <width>88</width>
               <height>16777215</height>
              </size>
             </property>
@@ -728,7 +730,7 @@
             </property>
             <property name="maximumSize">
              <size>
-              <width>70</width>
+              <width>78</width>
               <height>16777215</height>
              </size>
             </property>
@@ -756,7 +758,7 @@
             </property>
             <property name="maximumSize">
              <size>
-              <width>100</width>
+              <width>56</width>
               <height>16777215</height>
              </size>
             </property>
@@ -867,12 +869,17 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1314</width>
-     <height>20</height>
+     <width>1912</width>
+     <height>24</height>
     </rect>
    </property>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionInvert_Y_axis">
+   <property name="text">
+    <string>Invert Y axis</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>

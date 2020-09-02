@@ -135,6 +135,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.max_per = 1.
         self.errors.stateChanged.connect(self.error_changed)
         self.smooth.stateChanged.connect(self.smooth_changed)
+        self.invertyaxis.stateChanged.connect(self.invertyaxis_changed)
         self.hide_phase.stateChanged.connect(self.hide_phase_changed)
         self.smooth_spin.valueChanged.connect(self.smooth_changed)
         self.start_spin.valueChanged.connect(self.getdftrange)
@@ -259,6 +260,18 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         else:
             self.curve_ph_smooth.setData(x=[], y=[])
             self.curve_ph_smooth.update()
+    
+    def invertyaxis_changed(self):
+        if self.invertyaxis.isChecked():
+            self.curve_lc.getViewBox().invertY(True)
+            self.curve_ph.getViewBox().invertY(True)
+            self.curve_lc.update()
+            self.curve_ph.update()
+        else:
+            self.curve_lc.getViewBox().invertY(False)
+            self.curve_ph.getViewBox().invertY(False)
+            self.curve_lc.update()
+            self.curve_ph.update()
 
     def hide_phase_changed(self):
         if self.hide_phase.isChecked():

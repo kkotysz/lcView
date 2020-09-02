@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import sys
 from PyQt5 import QtCore, QtGui, uic, QtWidgets
 import breeze_resources

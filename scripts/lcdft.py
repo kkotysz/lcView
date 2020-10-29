@@ -4,7 +4,7 @@ import breeze_resources
 import pyqtgraph as pg
 import pandas as pd
 import numpy as np
-# from astropy import units as u
+from astropy import units as u
 import os
 from boxcar import smooth as bcsmooth
 import subprocess
@@ -186,7 +186,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.ph.autoRange()
 
     def add_clicked(self):
-        new_cdf = pd.DataFrame({'Frequency': [1. / self.curr_per], 'Period': [self.curr_per]}).round(5)
+        new_cdf = pd.DataFrame({'Frequency': [np.round((1. / self.curr_per), 5)], 'Period': [np.round(self.per_u, 2)]})
         self.freq_cdf = self.freq_cdf.append(new_cdf, ignore_index=True)
         self.freq_cdf.index = range(self.freq_cdf.shape[0])
         self.update_table()
@@ -199,13 +199,26 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
     def table_clicked(self, item):
         self.freq_cdf.index = range(self.freq_cdf.shape[0])
-        self.phase_spin.setValue(float(item.data()))
+        try:
+            self.phase_spin.setValue(float(item.data()))
+        except ValueError:
+            pass
         self.freq_to_remove = item
 
     def progress_bar(self):
         deltaT = np.ptp(self.time)
         self.max_progress = int((self.endf - self.startf) * self.acc * deltaT)
         self.dftprogress.setValue(int(self.wc_process / self.max_progress * 100))
+
+    def nyq_and_per(self):
+        self.nyqf = 1 /(2 * (self.time[-1] - self.time[-2]))
+        self.per_u = self.curr_per * u.day
+        if self.per_u.value < 1./24:
+            self.per_u = self.per_u.to(u.min)
+        elif self.per_u.value < 1:
+            self.per_u = self.per_u.to(u.hour)
+        self.nyq_lab.setText("Nyquist frequency: "+str(np.round(self.nyqf, 2))+"d<sup>-1<sup>")
+        self.per_lab.setText("Current period: "+str(np.round(self.per_u, 2)))
 
     def phase_clicked(self):
         try:
@@ -291,7 +304,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # self.freqtv.resizeRowsToContents()
 
     def show_table(self):
-        new_cdf = pd.DataFrame({'Frequency': [1. / self.curr_per], 'Period': [self.curr_per]}).round(5)
+        new_cdf = pd.DataFrame({'Frequency': [np.round((1. / self.curr_per), 5)], 'Period': [np.round(self.per_u, 2)]})
         self.freq_cdf = new_cdf
         self.freqtm = TableModel()  # Create table model
         self.freqtm.update_tm(self.freq_cdf)
@@ -319,6 +332,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.hide_phase_changed()
             self.ph.autoRange()
             self.lc.autoRange()
+            self.nyq_and_per()
 
     def onMouseMoved(self, point):
         # print(point)
@@ -368,6 +382,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.curr_per = 1. / self.freq[np.where(self.ampl == np.max(self.ampl[self.freq > 0.3]))[0][0]]
         self.curr_ampl = np.max(self.ampl[self.freq > 0.3])
         # self.sort_phases()
+        self.nyq_and_per() # calc nyquist and show current period
         self.plot_lc()  # plot lc graph
         self.plot_dft()  # plot dft graph
         self.plot_ph()  # plot dft graph
@@ -381,6 +396,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phase_spin.setValue(1. / self.curr_per)
         self.ph.autoRange()
         self.lc.autoRange()
+
 
     def populate(self):
         path = QtCore.QDir.currentPath()
@@ -450,6 +466,7 @@ if __name__ == "__main__":
     stream = QtCore.QTextStream(file)
     app.setStyleSheet(stream.readAll())
     app.setApplicationName('lcView')
+    app.setFont(QtGui.QFont('Latin Modern Sans'))
 
     window = lcdftMain()
     window.move(0, 0)

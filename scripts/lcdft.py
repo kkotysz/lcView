@@ -409,6 +409,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
     def plot_ph(self):
         if self.file_path != 'first_run':
+            if self.time[0] < 0:
+                self.time = self.time + self.time[0]*(-1)
             temp_phase = (np.fmod(self.time + self.shift_p, self.curr_per)) / self.curr_per
             self.phase = np.tile(temp_phase, self.nofphases) + np.repeat(np.arange(0, self.nofphases), len(temp_phase))
             self.sort_phases()

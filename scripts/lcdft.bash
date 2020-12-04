@@ -19,4 +19,6 @@ echo "===================fwpeaks=================="
 fwpeaks -f lcf.data $2 $3 $deltaf | head -n 10
 sed '1d;$d' lcf.trf > res; mv res lcf.trf
 
+mv lcf.data lcf.trf "$dir_path/.temp_lcView"
+
 rm .t0 .tn .ttt median.dat lcf.max

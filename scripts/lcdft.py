@@ -8,8 +8,10 @@ from astropy import units as u
 import os
 from boxcar import smooth as bcsmooth
 import subprocess
+from freqs_plot import create_freqs
 
 dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1], '')
+temp_path = dir_path+".temp_lcView/"
 qtCreatorFile = dir_path + "lcdft.ui"  # Enter file here.
 Ui_MainWindow, QtBaseClass = uic.loadUiType(qtCreatorFile)
 
@@ -72,36 +74,56 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1],
                                                            '')  # path to directory where app is opened
         # Initialize pens
-        self.symredpen = (240, 24, 24)
+        self.symredpen = "#ff000d"
         self.symbckpen = (24, 24, 24)
         self.sympen = (240, 240, 240)
-        self.symgrepen = (24, 240, 24)
-        self.symyelpen = (240, 240, 24)
+        self.symtrapen = (240, 240, 240, 0)
+        self.symgrepen = "#76cd26"
+        self.symyelpen = "#fffe7a"
+        self.symblupen = "#047495"
 
-        self.redpen = pg.mkPen(color=self.symredpen)
+        self.redpen = pg.mkPen(color=self.symredpen, width=2.2)
         self.bckpen = pg.mkPen(color=self.symbckpen)
         self.whipen = pg.mkPen(color=self.sympen)
         self.grepen = pg.mkPen(color=self.symgrepen)
-        self.yelpen = pg.mkPen(color=self.symyelpen)
+        self.yelpen = pg.mkPen(color=self.symyelpen, width=0.3)
+        self.blupen = pg.mkPen(color=self.symblupen, width=0.3)
+        self.trapen = pg.mkPen(color=self.symtrapen, width=0.3)
 
         # Initialize plots to connect with mouse
-        self.ph.setBackground('#1C1717')
-        self.lc.setBackground('#1C1717')
-        self.dft.setBackground('#1C1717')
 
-        self.curve_lc = self.lc.plot(x=[], y=[], pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                                     symbolBrush=self.sympen)
+        self.ph.setBackground('#1C1717')
+        # self.ph.plotItem.setLabel('left', "Flux/Magnitude")#, units='ppt/mmag')
+        # self.ph.plotItem.setLabel('bottom', "Phase")
+       
+        self.lc.setBackground('#1C1717')
+        self.lc.plotItem.setLabel('left', "Flux/Magnitude")#, units='ppt/mmag')
+        self.lc.plotItem.setLabel('bottom', "Time")#, units='d')
+
+        self.dft.setBackground('#1C1717')
+        self.dft.plotItem.setLabel('left', "Amplitude")#, units='ppt/mmag')
+        self.dft.plotItem.setLabel('bottom', "Frequency")#, units='1/d')
+
+        self.tabWidget.currentChanged.connect(self.show_phase_labels) # Workaround for error when self.ph labels are set above
+
+
+        self.curve_lc = self.lc.plot(x=[], y=[], pen=None, symbol='o', symbolSize=3, symbolPen=self.sympen,
+                                     symbolBrush=self.sympen)    
         self.err_lc = pg.ErrorBarItem(x=np.array([]), y=np.array([]), height=np.array([]), beam=0.0,
-                                      pen={'color': 'w', 'width': 0.85})
+                                      pen={'color': 'w', 'width': 0.85})    
         self.lc.addItem(self.err_lc)
-        self.curve_ph = self.ph.plot(x=[], y=[], pen=None, symbol='o', symbolSize=2.5, symbolPen=self.sympen,
-                                     symbolBrush=self.sympen)
+      
+        
+        self.curve_ph = self.ph.plot(x=[], y=[], pen=None, symbol='o', symbolSize=3, symbolPen=self.sympen,
+                                     symbolBrush=self.sympen)                           
         self.err_ph = pg.ErrorBarItem(x=np.array([]), y=np.array([]), height=np.array([]), beam=0.0,
                                       pen={'color': 'w', 'width': 0.85})
-        self.ph.addItem(self.err_ph)
-        self.curve_ph_smooth = self.ph.plot(x=[], y=[], pen=None, symbol='o', symbolSize=2.5, symbolPen=self.symgrepen,
+        self.ph.addItem(self.err_ph)              
+        self.curve_ph_smooth = self.ph.plot(x=[], y=[], pen=None, symbol='o', symbolSize=4, symbolPen=self.symgrepen,
                                             symbolBrush=self.symgrepen)
+
         self.curve_dft = self.dft.plot(x=[], y=[], pen=self.sympen)
+        self.check_freq() # Check if freq exists and set [not]checkable QCheckBox for frequencies
 
         # --------------------------- Mouse position -------------------------------- #
         # Show positions of the mouse
@@ -146,6 +168,9 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.addfreqbutton.clicked.connect(self.add_clicked)
         self.remfreqbutton.clicked.connect(self.rem_clicked)
         self.phase_dial.valueChanged.connect(self.phase_dial_changed)
+        self.freq_comb.stateChanged.connect(lambda: self.freq_visibility("com"))
+        self.freq_ind.stateChanged.connect(lambda: self.freq_visibility("ind"))
+
 
         self.stylecombobox.addItems(["Light Mode", "Dark Mode"])
         self.stylecombobox.activated[str].connect(self.selectionchange)
@@ -167,6 +192,159 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # self.freqtv.resizeRowsToContents()
         #                                                                             #
         # --------------------------------------------------------------------------- #
+
+    # def freq_comb_visibility(self):
+    #     subscript = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+    #     if self.freq_comb.checkState() == 0:
+    #         try:
+    #             for cfl in self.com_freqs:
+    #                 self.dft.removeItem(cfl)
+    #         except AttributeError:
+    #             pass
+    #     elif self.freq_comb.checkState() == 1:
+    #         self.com_freqs = []
+    #         for com_freq, com_label in zip(self.freq_com_df['freq'], self.freq_com_df['label']):
+    #             com_freq_line = pg.InfiniteLine(pos=com_freq, pen=self.yelpen, span=(0.9,1), label=com_label.translate(subscript), labelOpts={"position":0.5})
+    #             com_freq_line.addMarker('v', position=0, size=10.0)
+    #             self.com_freqs.append(com_freq_line)
+    #             self.dft.addItem(com_freq_line)
+    #     elif self.freq_comb.checkState() == 2:
+    #         try:
+    #             for cfl in self.com_freqs:
+    #                 self.dft.removeItem(cfl)
+    #         except AttributeError:
+    #             pass
+    #         self.com_freqs = []
+    #         for com_freq, com_label in zip(self.freq_com_df['freq'], self.freq_com_df['label']):
+    #             com_freq_line = pg.InfiniteLine(pos=com_freq, pen=self.yelpen, label=com_label.translate(subscript), labelOpts={"position":0.95})
+    #             com_freq_line.addMarker('v', position=0.9, size=10.0)
+    #             self.com_freqs.append(com_freq_line)
+    #             self.dft.addItem(com_freq_line)
+
+    def freq_visibility(self, ftype):
+        if ftype == "com":
+            df = self.freq_com_df
+            cb = self.freq_comb
+            self.fl = self.com_freqs
+            line_color = self.yelpen
+        if ftype == "ind":
+            df = self.freq_ind_df
+            cb = self.freq_ind
+            self.fl = self.ind_freqs
+            line_color = self.blupen
+
+        subscript = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+        if cb.checkState() == 0:
+            for cfl in self.fl:
+                self.dft.removeItem(cfl)
+        elif cb.checkState() == 1:
+            self.fl = []
+            for freq, label in zip(df['freq'], df['label']):
+                if ftype == "com":
+                    formatted_label = label.translate(subscript)
+                if ftype == "ind":
+                    formatted_label = label.split('_')[0]+label.split('_')[1].strip("{").strip("}").translate(subscript)
+                freq_line = pg.InfiniteLine(pos=freq, pen=line_color, span=(0.9,1), label=formatted_label, labelOpts={"position":0.5})
+                freq_line.addMarker('v', position=0, size=10.0)
+                self.fl.append(freq_line)
+                self.dft.addItem(freq_line)
+        elif cb.checkState() == 2:
+            try:
+                for cfl in self.fl:
+                    self.dft.removeItem(cfl)
+            except AttributeError:
+                pass
+            self.fl = []
+            for freq, label in zip(df['freq'], df['label']):
+                if ftype == "com":
+                    formatted_label = label.translate(subscript)
+                if ftype == "ind":
+                    formatted_label = label.split('_')[0]+label.split('_')[1].strip("{").strip("}").translate(subscript)
+                freq_line = pg.InfiniteLine(pos=freq, pen=line_color, label=formatted_label, labelOpts={"position":0.95})
+                freq_line.addMarker('v', position=0.9, size=10.0)
+                self.fl.append(freq_line)
+                self.dft.addItem(freq_line)
+        if ftype == "com":
+            self.com_freqs = self.fl
+        if ftype == "ind":
+            self.ind_freqs = self.fl
+
+    def show_phase_labels(self):
+        self.ph.plotItem.setLabel('left', "Flux/Magnitude")#, units='ppt/mmag')
+        self.ph.plotItem.setLabel('bottom', "Phase")
+
+    def check_freq(self):
+        try:
+            full_path=str(self.file_path).rsplit("/", 1)[0]+"/"
+            # print(full_path)
+            self.freq_exists = create_freqs(temp_path, full_path)
+        except AttributeError:
+            self.freq_exists = False
+        if self.freq_exists:
+            self.freq_ind.setCheckable(True)
+            self.freq_ind.setChecked(True)
+            self.freq_ind.setStyleSheet("QCheckBox{color: black}")
+            
+            # self.freq_harm.setCheckable(True)
+            # self.freq_harm.setChecked(True)
+            # self.freq_harm.setStyleSheet("QCheckBox{color: black}")
+            self.freq_harm.setCheckable(False)
+            self.freq_harm.setStyleSheet("QCheckBox{color: gray}")
+            
+            self.freq_comb.setCheckable(True)
+            self.freq_comb.setChecked(True)
+            self.freq_comb.setStyleSheet("QCheckBox{color: black}")
+
+            self.freq_ind_df = pd.read_csv(temp_path+'freqs_plot', header=None, names=["freq", "label"], sep='\s+')
+            self.freq_com_df = pd.read_csv(temp_path+'combs_plot', header=None, names=["freq", "label"], sep='\s+')
+            try:
+                for ifl in self.ind_freqs:
+                    self.dft.removeItem(ifl)
+            except AttributeError:
+                pass
+
+            try:
+                for cfl in self.com_freqs:
+                    self.dft.removeItem(cfl)
+            except AttributeError:
+                pass
+
+            subscript = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+           
+            self.ind_freqs = []
+            self.com_freqs = []
+            for com_freq, com_label in zip(self.freq_com_df['freq'], self.freq_com_df['label']):
+                com_freq_line = pg.InfiniteLine(pos=com_freq, pen=self.yelpen, label=com_label.translate(subscript), labelOpts={"position":0.95})
+                com_freq_line.addMarker('v', position=0.9, size=10.0)
+                self.com_freqs.append(com_freq_line)
+                self.dft.addItem(com_freq_line)
+            for ind_freq, ind_label in zip(self.freq_ind_df['freq'], self.freq_ind_df['label']):
+                formatted_label = ind_label.split('_')[0]+ind_label.split('_')[1].strip("{").strip("}").translate(subscript)
+                ind_freq_line = pg.InfiniteLine(pos=ind_freq, pen=self.blupen, label=formatted_label, labelOpts={"position":0.95})
+                ind_freq_line.addMarker('v', position=0.9, size=10.0)
+                self.ind_freqs.append(ind_freq_line)
+                self.dft.addItem(ind_freq_line)
+
+        else:
+            try:
+                for ifl in self.ind_freqs:
+                    self.dft.removeItem(ifl)
+            except AttributeError:
+                pass
+
+            try:
+                for cfl in self.com_freqs:
+                    self.dft.removeItem(cfl)
+            except AttributeError:
+                pass
+
+            self.freq_ind.setCheckable(False)
+            self.freq_ind.setStyleSheet("QCheckBox{color: gray}")
+            self.freq_harm.setCheckable(False)
+            self.freq_harm.setStyleSheet("QCheckBox{color: gray}")
+            self.freq_comb.setCheckable(False)
+            self.freq_comb.setStyleSheet("QCheckBox{color: gray}")
+
 
     def selectionchange(self, styleName):
         if styleName == 'Light Mode':
@@ -351,16 +529,16 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                 'LC: ', mousePoint_lc.x(), mousePoint_lc.y(), 'TRF: ', mousePoint_dft.x(), mousePoint_dft.y(), 'PHS: ',
                 mousePoint_ph.x(), mousePoint_ph.y()))
 
-    def onClicked(self, index):
+    def onClicked(self, index):     # When clicked on TreeView
         try:
             self.file_path = self.sender().model().filePath(index)
         except AttributeError:
             pass
         self.time, self.flux, self.ferr = np.loadtxt(self.file_path, unpack=True)
-        try:
-            subprocess.check_output(['rm', 'lcf.trf'])
-        except subprocess.CalledProcessError:
-            pass
+        # try:
+        #     subprocess.check_output(['rm', 'lcf.trf'])
+        # except subprocess.CalledProcessError:
+        #     pass
         dft_process = subprocess.Popen(
             ['bash', self.dir_path + 'lcdft.bash', self.file_path, str(float(self.startf)), str(int(self.endf)),
              str(int(self.acc)), self.dir_path], stdout=subprocess.DEVNULL)
@@ -378,7 +556,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                 self.dftprogress.setStyleSheet("QProgressBar::chunk:horizontal {background-color: rgb(120, 240, 24);}")
                 break
 
-        self.freq, self.ampl = np.loadtxt('lcf.trf', unpack=True)
+        self.freq, self.ampl = np.loadtxt(temp_path+'lcf.trf', unpack=True)
         self.curr_per = 1. / self.freq[np.where(self.ampl == np.max(self.ampl[self.freq > 0.3]))[0][0]]
         self.curr_ampl = np.max(self.ampl[self.freq > 0.3])
         # self.sort_phases()
@@ -396,6 +574,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phase_spin.setValue(1. / self.curr_per)
         self.ph.autoRange()
         self.lc.autoRange()
+        self.check_freq()
 
 
     def populate(self):

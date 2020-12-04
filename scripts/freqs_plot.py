@@ -70,7 +70,7 @@ def create_freqs(*args):
                 print("{0:12.6f} \"{1:s}\"".format(np.sum(np.multiply(myarray,freqs_array)), ' '.join(fall)), file=combs_plot)
         return True
     except (FileNotFoundError, IndexError) as e:
-        raise e
+        # raise e
         print("WARNING: There is no freq file!")
         return False
         

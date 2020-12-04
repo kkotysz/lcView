@@ -193,33 +193,6 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         #                                                                             #
         # --------------------------------------------------------------------------- #
 
-    # def freq_comb_visibility(self):
-    #     subscript = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-    #     if self.freq_comb.checkState() == 0:
-    #         try:
-    #             for cfl in self.com_freqs:
-    #                 self.dft.removeItem(cfl)
-    #         except AttributeError:
-    #             pass
-    #     elif self.freq_comb.checkState() == 1:
-    #         self.com_freqs = []
-    #         for com_freq, com_label in zip(self.freq_com_df['freq'], self.freq_com_df['label']):
-    #             com_freq_line = pg.InfiniteLine(pos=com_freq, pen=self.yelpen, span=(0.9,1), label=com_label.translate(subscript), labelOpts={"position":0.5})
-    #             com_freq_line.addMarker('v', position=0, size=10.0)
-    #             self.com_freqs.append(com_freq_line)
-    #             self.dft.addItem(com_freq_line)
-    #     elif self.freq_comb.checkState() == 2:
-    #         try:
-    #             for cfl in self.com_freqs:
-    #                 self.dft.removeItem(cfl)
-    #         except AttributeError:
-    #             pass
-    #         self.com_freqs = []
-    #         for com_freq, com_label in zip(self.freq_com_df['freq'], self.freq_com_df['label']):
-    #             com_freq_line = pg.InfiniteLine(pos=com_freq, pen=self.yelpen, label=com_label.translate(subscript), labelOpts={"position":0.95})
-    #             com_freq_line.addMarker('v', position=0.9, size=10.0)
-    #             self.com_freqs.append(com_freq_line)
-    #             self.dft.addItem(com_freq_line)
 
     def freq_visibility(self, ftype):
         if ftype == "com":
@@ -616,6 +589,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def plot_dft(self):
         if self.file_path != 'first_run':
             self.curve_dft.setData(self.freq, self.ampl)
+            # draw 4 and 5 S/N
+            sn = np.mean(self.ampl)
+            sn_four_line = pg.InfiniteLine(pos=4*sn, angle=0, pen=self.grepen, label="4 S/N", labelOpts={"position":0.95})
+            sn_five_line = pg.InfiniteLine(pos=5*sn, angle=0, pen=self.grepen, label="5 S/N", labelOpts={"position":0.95})
+            self.dft.addItem(sn_four_line)
+            self.dft.addItem(sn_five_line)
             try:
                 if self.hover_curr_freq.value() > self.endf:
                     self.hover_curr_freq.setValue(self.endf)

@@ -9,9 +9,11 @@ import os
 from boxcar import smooth as bcsmooth
 import subprocess
 from freqs_plot import create_freqs
+import pet
 
 dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1], '')
 temp_path = dir_path+".temp_lcView/"
+
 qtCreatorFile = dir_path + "lcdft.ui"  # Enter file here.
 Ui_MainWindow, QtBaseClass = uic.loadUiType(qtCreatorFile)
 
@@ -52,6 +54,7 @@ class TableModel(QtCore.QAbstractTableModel):
             return QtCore.QVariant("%s" % str(section + 1))
         return QtCore.QVariant()
 
+
 class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
 
     def __init__(self):
@@ -86,6 +89,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.bckpen = pg.mkPen(color=self.symbckpen)
         self.whipen = pg.mkPen(color=self.sympen)
         self.grepen = pg.mkPen(color=self.symgrepen)
+        self.grelin = pg.mkPen(color=self.symgrepen, style=QtCore.Qt.DotLine)
         self.yelpen = pg.mkPen(color=self.symyelpen, width=0.3)
         self.blupen = pg.mkPen(color=self.symblupen, width=0.3)
         self.trapen = pg.mkPen(color=self.symtrapen, width=0.3)
@@ -105,7 +109,6 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.dft.plotItem.setLabel('bottom', "Frequency")#, units='1/d')
 
         self.tabWidget.currentChanged.connect(self.show_phase_labels) # Workaround for error when self.ph labels are set above
-
 
         self.curve_lc = self.lc.plot(x=[], y=[], pen=None, symbol='o', symbolSize=3, symbolPen=self.sympen,
                                      symbolBrush=self.sympen)    
@@ -170,6 +173,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phase_dial.valueChanged.connect(self.phase_dial_changed)
         self.freq_comb.stateChanged.connect(lambda: self.freq_visibility("com"))
         self.freq_ind.stateChanged.connect(lambda: self.freq_visibility("ind"))
+        
+        self.petbutton.clicked.connect(self.petbutton_clicked)
 
 
         self.stylecombobox.addItems(["Light Mode", "Dark Mode"])
@@ -193,6 +198,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         #                                                                             #
         # --------------------------------------------------------------------------- #
 
+    def petbutton_clicked(self):
+        new_gui = subprocess.Popen(["python", dir_path+"pet.py", self.file_path.rsplit("/", 1)[0]])
 
     def freq_visibility(self, ftype):
         if ftype == "com":
@@ -488,19 +495,23 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def onMouseMoved(self, point):
         # print(point)
         self.current_point = point
-        mousePoint_lc = self.lc.plotItem.vb.mapSceneToView(point)
-        mousePoint_ph = self.ph.plotItem.vb.mapSceneToView(point)
-        mousePoint_dft = self.dft.plotItem.vb.mapSceneToView(point)
         try:
-            self.dft.removeItem(self.hover_curr_freq)
-        except AttributeError:
+            mousePoint_lc = self.lc.plotItem.vb.mapSceneToView(point)
+            mousePoint_ph = self.ph.plotItem.vb.mapSceneToView(point)
+            mousePoint_dft = self.dft.plotItem.vb.mapSceneToView(point)
+            try:
+                self.dft.removeItem(self.hover_curr_freq)
+            except AttributeError:
+                pass
+            self.hover_curr_freq = pg.InfiniteLine(pos=mousePoint_dft.x(), pen=self.yelpen)
+            self.dft.addItem(self.hover_curr_freq)
+            self.statusBar().showMessage(
+                '{:2s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}'.format(
+                    'LC: ', mousePoint_lc.x(), mousePoint_lc.y(), 'TRF: ', mousePoint_dft.x(), mousePoint_dft.y(), 'PHS: ',
+                    mousePoint_ph.x(), mousePoint_ph.y()))
+        except np.linalg.LinAlgError:
             pass
-        self.hover_curr_freq = pg.InfiniteLine(pos=mousePoint_dft.x(), pen=self.yelpen)
-        self.dft.addItem(self.hover_curr_freq)
-        self.statusBar().showMessage(
-            '{:2s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}'.format(
-                'LC: ', mousePoint_lc.x(), mousePoint_lc.y(), 'TRF: ', mousePoint_dft.x(), mousePoint_dft.y(), 'PHS: ',
-                mousePoint_ph.x(), mousePoint_ph.y()))
+
 
     def onClicked(self, index):     # When clicked on TreeView
         try:
@@ -590,11 +601,19 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         if self.file_path != 'first_run':
             self.curve_dft.setData(self.freq, self.ampl)
             # draw 4 and 5 S/N
+            try:
+                for snl in self.sn_lines:
+                    self.dft.removeItem(snl)
+            except AttributeError:
+                pass
+            self.sn_lines = []
             sn = np.mean(self.ampl)
-            sn_four_line = pg.InfiniteLine(pos=4*sn, angle=0, pen=self.grepen, label="4 S/N", labelOpts={"position":0.95})
-            sn_five_line = pg.InfiniteLine(pos=5*sn, angle=0, pen=self.grepen, label="5 S/N", labelOpts={"position":0.95})
-            self.dft.addItem(sn_four_line)
-            self.dft.addItem(sn_five_line)
+            sn_four_line = pg.InfiniteLine(pos=4*sn, angle=0, pen=self.grelin, label="4 S/N", labelOpts={"position":0.95})
+            sn_five_line = pg.InfiniteLine(pos=5*sn, angle=0, pen=self.grelin, label="5 S/N", labelOpts={"position":0.95})
+            self.sn_lines.append(sn_four_line)
+            self.sn_lines.append(sn_five_line)
+            for snl in self.sn_lines:
+                self.dft.addItem(snl)
             try:
                 if self.hover_curr_freq.value() > self.endf:
                     self.hover_curr_freq.setValue(self.endf)
@@ -610,7 +629,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
         return_value = msg_box.exec_()
         if return_value == QtWidgets.QMessageBox.Ok:
-            print('Bye bye')
+            print('[lcdft.py] Bye bye')
             event.accept()
         else:
             event.ignore()

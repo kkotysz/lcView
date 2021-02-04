@@ -71,7 +71,7 @@ def create_freqs(*args):
         return True
     except (FileNotFoundError, IndexError) as e:
         # raise e
-        print("WARNING: There is no freq file!")
+        print("[freqs_plot.py WARNING]: There is no freq file!")
         return False
         
 

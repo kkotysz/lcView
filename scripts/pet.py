@@ -103,7 +103,7 @@ class petMain(QtGui.QMainWindow, Ui_MainWindow):
         self.blupen = pg.mkPen(color=self.symblupen, width=0.3)
         self.trapen = pg.mkPen(color=self.symtrapen, width=0.3)
         
-        self.pet.setBackground('#1C1717')
+        self.pet.setBackground(self.bg_color)
         self.pet.setXRange(-1.6, 1, padding=0)
         self.pet.setYRange(0.4, 1, padding=0)
         self.pet.showGrid(x = True, y = True, alpha = 0.1)

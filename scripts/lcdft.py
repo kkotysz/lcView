@@ -79,32 +79,41 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # Initialize pens
         self.symredpen = "#ff000d"
         self.symbckpen = (24, 24, 24)
-        self.sympen = (240, 240, 240)
+        self.symwhipen = (240, 240, 240)
         self.symtrapen = (240, 240, 240, 0)
         self.symgrepen = "#76cd26"
         self.symyelpen = "#fffe7a"
+        self.symyelpen = "#b04e0f"
         self.symblupen = "#047495"
 
         self.redpen = pg.mkPen(color=self.symredpen, width=2.2)
         self.bckpen = pg.mkPen(color=self.symbckpen)
-        self.whipen = pg.mkPen(color=self.sympen)
+        self.whipen = pg.mkPen(color=self.symwhipen)
         self.grepen = pg.mkPen(color=self.symgrepen)
         self.grelin = pg.mkPen(color=self.symgrepen, style=QtCore.Qt.DotLine)
         self.yelpen = pg.mkPen(color=self.symyelpen, width=0.3)
         self.blupen = pg.mkPen(color=self.symblupen, width=0.3)
         self.trapen = pg.mkPen(color=self.symtrapen, width=0.3)
+        
+        self.bg_color = '#1C1717'
+        self.sympen = self.symwhipen
+        light = True
+        if light:
+            self.bg_color = '#FFFFFF'
+            self.sympen = self.symbckpen
+    
 
         # Initialize plots to connect with mouse
 
-        self.ph.setBackground('#1C1717')
+        self.ph.setBackground(self.bg_color)
         # self.ph.plotItem.setLabel('left', "Flux/Magnitude")#, units='ppt/mmag')
         # self.ph.plotItem.setLabel('bottom', "Phase")
        
-        self.lc.setBackground('#1C1717')
+        self.lc.setBackground(self.bg_color)
         self.lc.plotItem.setLabel('left', "Flux/Magnitude")#, units='ppt/mmag')
         self.lc.plotItem.setLabel('bottom', "Time")#, units='d')
 
-        self.dft.setBackground('#1C1717')
+        self.dft.setBackground(self.bg_color)
         self.dft.plotItem.setLabel('left', "Amplitude")#, units='ppt/mmag')
         self.dft.plotItem.setLabel('bottom', "Frequency")#, units='1/d')
 

@@ -350,7 +350,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.error_changed()
         self.smooth_changed()
         self.hide_phase_changed()
-        self.ph.autoRange()
+        # self.ph.autoRange()
 
     def add_clicked(self):
         new_cdf = pd.DataFrame({'Frequency': [np.round((1. / self.curr_per), 5)], 'Period': [np.round(self.per_u, 2)]})
@@ -384,7 +384,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.per_u = self.per_u.to(u.min)
         elif self.per_u.value < 1:
             self.per_u = self.per_u.to(u.hour)
-        self.nyq_lab.setText("Nyquist frequency: "+str(np.round(self.nyqf, 2))+"d<sup>-1<sup>")
+        self.nyq_lab.setText("Nyquist frequency: "+str(np.round(self.nyqf, 3))+"d<sup>-1<sup>")
         self.per_lab.setText("Current period: "+str(np.round(self.per_u, 2)))
 
     def phase_clicked(self):
@@ -497,7 +497,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.error_changed()
             self.smooth_changed()
             self.hide_phase_changed()
-            self.ph.autoRange()
+            # self.ph.autoRange()
             self.lc.autoRange()
             self.nyq_and_per()
 
@@ -527,29 +527,33 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.file_path = self.sender().model().filePath(index)
         except AttributeError:
             pass
-        self.time, self.flux, self.ferr = np.loadtxt(self.file_path, unpack=True)
+        df_lc = pd.read_csv(self.file_path, delimiter="\s+", header=None)
+        self.time, self.flux, self.ferr = df_lc[0].values, df_lc[1].values, df_lc[2].values
         # try:
-        #     subprocess.check_output(['rm', 'lcf.trf'])
+        #     subprocess.check_output(['rm', temp_path+'lcf.trf'])
         # except subprocess.CalledProcessError:
         #     pass
         dft_process = subprocess.Popen(
-            ['bash', self.dir_path + 'lcdft.bash', self.file_path, str(float(self.startf)), str(int(self.endf)),
+            ['bash', self.dir_path + 'lcdft.sh', self.file_path, str(float(self.startf)), str(int(self.endf)),
              str(int(self.acc)), self.dir_path], stdout=subprocess.DEVNULL)
         self.dftprogress.setStyleSheet("QProgressBar::chunk:horizontal {background-color: #33A4DF;}")
         while True:
             if dft_process.poll() is None:
+                self.recalcbutton.setText("CALCUALTING")
                 try:
-                    self.wc_process = int(
-                        subprocess.check_output(['wc', 'lcf.trf'], stderr=subprocess.STDOUT).split()[0].decode('utf-8'))
+                    self.wc_process = int(subprocess.check_output(['wc', temp_path+'lcf.trf'], stderr=subprocess.STDOUT).split()[0].decode('utf-8'))
                     self.progress_bar()
                 except subprocess.CalledProcessError:
                     pass
             else:
+                self.recalcbutton.setText("ALMOST DONE")
                 self.dftprogress.setValue(100)
                 self.dftprogress.setStyleSheet("QProgressBar::chunk:horizontal {background-color: rgb(120, 240, 24);}")
+                self.recalcbutton.setText("RECALCULATE")
                 break
-
-        self.freq, self.ampl = np.loadtxt(temp_path+'lcf.trf', unpack=True)
+        
+        df_dft = pd.read_csv(temp_path+'lcf.trf', delimiter="\s+", header=None)
+        self.freq, self.ampl = df_dft[0].values, df_dft[1].values
         self.curr_per = 1. / self.freq[np.where(self.ampl == np.max(self.ampl[self.freq > 0.3]))[0][0]]
         self.curr_ampl = np.max(self.ampl[self.freq > 0.3])
         # self.sort_phases()
@@ -565,7 +569,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phase_slider.setValue(499)  # reset phase shifter
         self.smooth_spin.setValue(int(len(self.time) / 30))
         self.phase_spin.setValue(1. / self.curr_per)
-        self.ph.autoRange()
+        # self.ph.autoRange()
         self.lc.autoRange()
         self.check_freq()
 
@@ -587,6 +591,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.phase = np.tile(temp_phase, self.nofphases) + np.repeat(np.arange(0, self.nofphases), len(temp_phase))
             self.sort_phases()
             self.curve_ph.setData(x=self.phase, y=self.flux_ph)
+            self.curve_ph.getViewBox().setRange(yRange=self.curve_ph.dataBounds(1))
             # self.curve_ph.getViewBox().invertY(True)
             self.curve_ph.update()
 

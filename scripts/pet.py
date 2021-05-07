@@ -103,7 +103,7 @@ class petMain(QtGui.QMainWindow, Ui_MainWindow):
         self.blupen = pg.mkPen(color=self.symblupen, width=0.3)
         self.trapen = pg.mkPen(color=self.symtrapen, width=0.3)
         
-        self.pet.setBackground(self.bg_color)
+        self.pet.setBackground('#1C1717')
         self.pet.setXRange(-1.6, 1, padding=0)
         self.pet.setYRange(0.4, 1, padding=0)
         self.pet.showGrid(x = True, y = True, alpha = 0.1)
@@ -181,8 +181,9 @@ class petMain(QtGui.QMainWindow, Ui_MainWindow):
                     print("# {0:2d} {1:12.6f}".format(i, freq))
             self.freq_exists = True
             self.mask = self.n_combs * [True]
-        
-         
+            if self.n_combs > 4:
+                self.freqs = self.freqs[:4]
+                self.n_combs = 4
         except FileNotFoundError:
             self.freq_exists = False
             print("[pet.py WARNING]: There is no freq file!")

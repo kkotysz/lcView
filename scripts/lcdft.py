@@ -97,7 +97,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         
         self.bg_color = '#1C1717'
         self.sympen = self.symwhipen
-        light = True
+        light = False
         if light:
             self.bg_color = '#FFFFFF'
             self.sympen = self.symbckpen

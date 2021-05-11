@@ -151,6 +151,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.curr_ampl = 1. / self.mouse_y
         self.curve_dft.scene().sigMouseClicked.connect(self.onMouseClicked)
 
+        # Initialize variables for dft range
+        self.startf = self.start_spin.value()
+        self.endf = self.end_spin.value()
+        self.acc = self.acc_spin.value()
+
+
         # Initialize variables
         self.shift_p = 0
         self.current_point = [0]  # sigMouseClicked and sigMouseMoved give different values (moved is correct)
@@ -158,11 +164,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.ferr_ph, self.flux_ph, self.flux_smoothed, self.phase = [0, 0, 0, 0]
         self.freq, self.ampl = [0, 0]
         self.nofphases = int(self.phase_dial.value())
-
-        # Initialize variables for dft range
-        self.startf = self.start_spin.value()
-        self.endf = self.end_spin.value()
-        self.acc = self.acc_spin.value()
+        self.size_to_find = 100*self.acc # in points; to find max. peak 
 
         # ------------------------------ Graphics ----------------------------------- #
         self.file_path = 'first_run'  # path to recognize when first run
@@ -206,6 +208,33 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         # self.freqtv.resizeRowsToContents()
         #                                                                             #
         # --------------------------------------------------------------------------- #
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_F:
+            point = self.current_point
+            tt = self.current_point
+            xx = self.dft.plotItem.vb.mapSceneToView(tt).x()
+            yy = self.dft.plotItem.vb.mapSceneToView(tt).y()
+            self.mouse_x = xx
+            try:
+                xx_ind = np.where(np.abs(self.freq - xx) < 0.001)[0][0]
+                arg_max = np.argmax(self.ampl[xx_ind-self.size_to_find:xx_ind+self.size_to_find])
+                self.curr_per = 1. / self.freq[xx_ind+arg_max-self.size_to_find]
+            except IndexError:
+                pass
+            self.update_line()  # update vertical line
+            self.phase_slider.setValue(499)  # reset phase shifter
+            self.phase_spin.setValue(1. / self.curr_per)
+            self.plot_ph()  # update phase plot
+            self.error_changed()
+            self.smooth_changed()
+            self.hide_phase_changed()
+            # self.ph.autoRange()
+            self.lc.autoRange()
+            self.nyq_and_per()    
+            # elif event.key() == QtCore.Qt.Key_Enter:
+        #     self.proceed()
+        # event.accept()
 
     def petbutton_clicked(self):
         new_gui = subprocess.Popen(["python", dir_path+"pet.py", self.file_path.rsplit("/", 1)[0]])
@@ -411,6 +440,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.startf = self.start_spin.value()
         self.endf = self.end_spin.value()
         self.acc = self.acc_spin.value()
+        self.size_to_find = 100*self.acc
 
     def phase_shift(self):
         self.shift_p = (float(self.phase_slider.value()) - 500.) / 1000. * self.curr_per
@@ -502,7 +532,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.nyq_and_per()
 
     def onMouseMoved(self, point):
-        # print(point)
+        # freqa and freqb: to show size of window to find max peak
         self.current_point = point
         try:
             mousePoint_lc = self.lc.plotItem.vb.mapSceneToView(point)
@@ -510,10 +540,25 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             mousePoint_dft = self.dft.plotItem.vb.mapSceneToView(point)
             try:
                 self.dft.removeItem(self.hover_curr_freq)
+                self.dft.removeItem(self.hover_curr_freqa)
+                self.dft.removeItem(self.hover_curr_freqb)
             except AttributeError:
                 pass
             self.hover_curr_freq = pg.InfiniteLine(pos=mousePoint_dft.x(), pen=self.yelpen)
+            try:
+                xa = self.freq[np.where(np.abs(self.freq - mousePoint_dft.x()) < 0.001)[0][0]-self.size_to_find]
+                xb = self.freq[np.where(np.abs(self.freq - mousePoint_dft.x()) < 0.001)[0][0]+self.size_to_find]
+                self.hover_curr_freqa = pg.InfiniteLine(pos=xa, pen=self.yelpen)
+                self.hover_curr_freqb = pg.InfiniteLine(pos=xb, pen=self.yelpen)
+            except IndexError:
+                pass
+
             self.dft.addItem(self.hover_curr_freq)
+            try:
+                self.dft.addItem(self.hover_curr_freqa)
+                self.dft.addItem(self.hover_curr_freqb)
+            except AttributeError:
+                pass
             self.statusBar().showMessage(
                 '{:2s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}'.format(
                     'LC: ', mousePoint_lc.x(), mousePoint_lc.y(), 'TRF: ', mousePoint_dft.x(), mousePoint_dft.y(), 'PHS: ',

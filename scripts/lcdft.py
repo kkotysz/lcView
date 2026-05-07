@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from astropy import units as u
 import os
+import breeze_resources
 from boxcar import smooth as bcsmooth
 import subprocess
 from freqs_plot import create_freqs
@@ -14,6 +15,14 @@ temp_path = dir_path+".temp_lcView/"
 
 qtCreatorFile = dir_path + "lcdft.ui"  # Enter file here.
 Ui_MainWindow, QtBaseClass = uic.loadUiType(qtCreatorFile)
+
+
+def read_light_curve(file_path):
+    df_lc = pd.read_csv(file_path, delimiter=r"\s+", header=None, comment="#", usecols=[0, 1, 2])
+    df_lc = df_lc.apply(pd.to_numeric, errors="coerce").dropna()
+    if df_lc.empty:
+        raise ValueError(f"No numeric light-curve rows found in {file_path}")
+    return df_lc[0].values, df_lc[1].values, df_lc[2].values
 
 
 class TableModel(QtCore.QAbstractTableModel):
@@ -36,7 +45,7 @@ class TableModel(QtCore.QAbstractTableModel):
     def data(self, index, role=QtCore.Qt.DisplayRole):
         i = index.row()
         j = index.column()
-        index_data = self.datatable.iloc[i][j]
+        index_data = self.datatable.iloc[i, j]
         if role == QtCore.Qt.DisplayRole:
             return '{0}'.format(index_data)
         else:
@@ -252,7 +261,7 @@ class lcdftMain(QtWidgets.QMainWindow, Ui_MainWindow):
         # event.accept()
 
     def petbutton_clicked(self):
-        new_gui = subprocess.Popen(["python", dir_path+"pet.py", self.file_path.rsplit("/", 1)[0]])
+        new_gui = subprocess.Popen([sys.executable, dir_path+"pet.py", self.file_path.rsplit("/", 1)[0]])
 
     def freq_visibility(self, ftype):
         if ftype == "com":
@@ -431,7 +440,7 @@ class lcdftMain(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def add_clicked(self):
         new_cdf = pd.DataFrame({'Frequency': [np.round((1. / self.curr_per), 5)], 'Period': [np.round(self.per_u, 2)]})
-        self.freq_cdf = self.freq_cdf.append(new_cdf, ignore_index=True)
+        self.freq_cdf = pd.concat([self.freq_cdf, new_cdf], ignore_index=True)
         self.freq_cdf.index = range(self.freq_cdf.shape[0])
         self.update_table()
 
@@ -621,8 +630,7 @@ class lcdftMain(QtWidgets.QMainWindow, Ui_MainWindow):
             self.file_path = self.sender().model().filePath(index)
         except AttributeError:
             pass
-        df_lc = pd.read_csv(self.file_path, delimiter=r"\s+", header=None)
-        self.time, self.flux, self.ferr = df_lc[0].values, df_lc[1].values, df_lc[2].values
+        self.time, self.flux, self.ferr = read_light_curve(self.file_path)
         # try:
         #     subprocess.check_output(['rm', temp_path+'lcf.trf'])
         # except subprocess.CalledProcessError:
@@ -744,7 +752,7 @@ class lcdftMain(QtWidgets.QMainWindow, Ui_MainWindow):
 
 
 if __name__ == "__main__":
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(dir_path + 'kzhya_ico-64.png'))
 
     # set stylesheet

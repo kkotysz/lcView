@@ -1,3 +1,4 @@
-scripts/.temp_lcView
-
+scripts/.temp_lcView/
+scripts/fwpeaks
+__pycache__/
 *.pyc

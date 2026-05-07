@@ -52,7 +52,7 @@ class TableModel(QtCore.QAbstractTableModel):
     def data(self, index, role=QtCore.Qt.DisplayRole):
         i = index.row()
         j = index.column()
-        index_data = self.datatable.iloc[i][j]
+        index_data = self.datatable.iloc[i, j]
         if role == QtCore.Qt.DisplayRole:
             return '{0}'.format(index_data)
         else:
@@ -132,7 +132,8 @@ class petMain(QtWidgets.QMainWindow, Ui_MainWindow):
                
         self.read_freqs()
         self.create_freq() # Create layout with freqs from freq file
-        self.populate_pet(self.freqs) # Create layout with freqs from freq file
+        if self.freq_exists:
+            self.populate_pet(self.freqs) # Create layout with freqs from freq file
         
     def show_on_pet(self):
         try:
@@ -368,7 +369,7 @@ class petMain(QtWidgets.QMainWindow, Ui_MainWindow):
 
 
 if __name__ == "__main__":
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     #  app.setWindowIcon(QtGui.QIcon(dir_path + 'kzhya_ico-64.png'))
 
     # set stylesheet

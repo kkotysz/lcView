@@ -1,6 +1,5 @@
 import sys
 from PyQt5 import QtCore, QtGui, uic, QtWidgets
-import breeze_resources
 import pyqtgraph as pg
 import pandas as pd
 import numpy as np
@@ -9,9 +8,8 @@ import os
 from boxcar import smooth as bcsmooth
 import subprocess
 from freqs_plot import create_freqs
-import pet
 
-dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1], '')
+dir_path = os.path.dirname(os.path.realpath(__file__)) + os.sep
 temp_path = dir_path+".temp_lcView/"
 
 qtCreatorFile = dir_path + "lcdft.ui"  # Enter file here.
@@ -55,10 +53,10 @@ class TableModel(QtCore.QAbstractTableModel):
         return QtCore.QVariant()
 
 
-class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
+class lcdftMain(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def __init__(self):
-        QtGui.QMainWindow.__init__(self)
+        QtWidgets.QMainWindow.__init__(self)
         Ui_MainWindow.__init__(self)
         pg.setConfigOptions(antialias=True)
         self.showMaximized()
@@ -74,8 +72,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.phase_slider.valueChanged.connect(self.phase_shift)
         # --------------------------------------------------------------------------- #
 
-        self.dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1],
-                                                           '')  # path to directory where app is opened
+        self.dir_path = dir_path  # path to directory where app is opened
         # Initialize pens
         self.symredpen = "#ff000d"
         self.symbckpen = (24, 24, 24)
@@ -97,10 +94,12 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         
         self.bg_color = '#1C1717'
         self.sympen = self.symwhipen
+        self.text_color = 'w'
         light = True
         if light:
             self.bg_color = '#FFFFFF'
             self.sympen = self.symbckpen
+            self.text_color = 'k'
     
 
         # Initialize plots to connect with mouse
@@ -108,28 +107,40 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.ph.setBackground(self.bg_color)
         # self.ph.plotItem.setLabel('left', "Flux/Magnitude")#, units='ppt/mmag')
         # self.ph.plotItem.setLabel('bottom', "Phase")
+        self.ph.getAxis('bottom').setPen(self.text_color)
+        self.ph.getAxis('left').setPen(self.text_color)
+        self.ph.getAxis('bottom').setTextPen(self.text_color)
+        self.ph.getAxis('left').setTextPen(self.text_color)
        
         self.lc.setBackground(self.bg_color)
-        self.lc.plotItem.setLabel('left', "Flux/Magnitude")#, units='ppt/mmag')
-        self.lc.plotItem.setLabel('bottom', "Time")#, units='d')
+        self.lc.plotItem.setLabel('left', "Flux/Magnitude", color=self.text_color)#, units='ppt/mmag')
+        self.lc.plotItem.setLabel('bottom', "Time", color=self.text_color)#, units='d')
+        self.lc.getAxis('bottom').setPen(self.text_color)
+        self.lc.getAxis('left').setPen(self.text_color)
+        self.lc.getAxis('bottom').setTextPen(self.text_color)
+        self.lc.getAxis('left').setTextPen(self.text_color)
 
         self.dft.setBackground(self.bg_color)
-        self.dft.plotItem.setLabel('left', "Amplitude")#, units='ppt/mmag')
-        self.dft.plotItem.setLabel('bottom', "Frequency")#, units='1/d')
+        self.dft.plotItem.setLabel('left', "Amplitude", color=self.text_color)#, units='ppt/mmag')
+        self.dft.plotItem.setLabel('bottom', "Frequency", color=self.text_color)#, units='1/d')
+        self.dft.getAxis('bottom').setPen(self.text_color)
+        self.dft.getAxis('left').setPen(self.text_color)
+        self.dft.getAxis('bottom').setTextPen(self.text_color)
+        self.dft.getAxis('left').setTextPen(self.text_color)
 
         self.tabWidget.currentChanged.connect(self.show_phase_labels) # Workaround for error when self.ph labels are set above
 
         self.curve_lc = self.lc.plot(x=[], y=[], pen=None, symbol='o', symbolSize=3, symbolPen=self.sympen,
                                      symbolBrush=self.sympen)    
         self.err_lc = pg.ErrorBarItem(x=np.array([]), y=np.array([]), height=np.array([]), beam=0.0,
-                                      pen={'color': 'w', 'width': 0.85})    
+                                      pen={'color': self.text_color, 'width': 0.85})    
         self.lc.addItem(self.err_lc)
       
         
         self.curve_ph = self.ph.plot(x=[], y=[], pen=None, symbol='o', symbolSize=3, symbolPen=self.sympen,
                                      symbolBrush=self.sympen)                           
         self.err_ph = pg.ErrorBarItem(x=np.array([]), y=np.array([]), height=np.array([]), beam=0.0,
-                                      pen={'color': 'w', 'width': 0.85})
+                                      pen={'color': self.text_color, 'width': 0.85})
         self.ph.addItem(self.err_ph)              
         self.curve_ph_smooth = self.ph.plot(x=[], y=[], pen=None, symbol='o', symbolSize=4, symbolPen=self.symgrepen,
                                             symbolBrush=self.symgrepen)
@@ -162,9 +173,9 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.current_point = [0]  # sigMouseClicked and sigMouseMoved give different values (moved is correct)
         self.time, self.flux, self.ferr = [0, 0, 0]
         self.ferr_ph, self.flux_ph, self.flux_smoothed, self.phase = [0, 0, 0, 0]
-        self.freq, self.ampl = [0, 0]
+        self.freq, self.ampl = np.array([]), np.array([])
         self.nofphases = int(self.phase_dial.value())
-        self.size_to_find = 100*self.acc # in points; to find max. peak 
+        self.size_to_find = 5*self.acc # in points; to find max. peak 
 
         # ------------------------------ Graphics ----------------------------------- #
         self.file_path = 'first_run'  # path to recognize when first run
@@ -200,7 +211,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.freqtm.update_tm(self.freq_cdf)
         self.freqtv = self.freq_list
         self.freqtv.setModel(self.freqtm)
-        self.freqtv.horizontalHeader().setResizeMode(QtGui.QHeaderView.Stretch)
+        self.freqtv.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
         self.freqtv.clicked.connect(self.table_clicked)
         # self.freqtv.setSortingEnabled(True)
 
@@ -216,12 +227,16 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             xx = self.dft.plotItem.vb.mapSceneToView(tt).x()
             yy = self.dft.plotItem.vb.mapSceneToView(tt).y()
             self.mouse_x = xx
-            try:
-                xx_ind = np.where(np.abs(self.freq - xx) < 0.001)[0][0]
-                arg_max = np.argmax(self.ampl[xx_ind-self.size_to_find:xx_ind+self.size_to_find])
-                self.curr_per = 1. / self.freq[xx_ind+arg_max-self.size_to_find]
-            except IndexError:
-                pass
+            
+            if len(self.freq) > 0:
+                xx_ind = (np.abs(self.freq - xx)).argmin()
+                idx_min = max(0, xx_ind - self.size_to_find)
+                idx_max = min(len(self.freq), xx_ind + self.size_to_find)
+                
+                if idx_max > idx_min:
+                    arg_max = np.argmax(self.ampl[idx_min:idx_max])
+                    self.curr_per = 1. / self.freq[idx_min + arg_max]
+
             self.update_line()  # update vertical line
             self.phase_slider.setValue(499)  # reset phase shifter
             self.phase_spin.setValue(1. / self.curr_per)
@@ -288,8 +303,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.ind_freqs = self.fl
 
     def show_phase_labels(self):
-        self.ph.plotItem.setLabel('left', "Flux/Magnitude")#, units='ppt/mmag')
-        self.ph.plotItem.setLabel('bottom', "Phase")
+        self.ph.plotItem.setLabel('left', "Flux/Magnitude", color=self.text_color)#, units='ppt/mmag')
+        self.ph.plotItem.setLabel('bottom', "Phase", color=self.text_color)
 
     def check_freq(self):
         try:
@@ -313,8 +328,8 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.freq_comb.setChecked(True)
             self.freq_comb.setStyleSheet("QCheckBox{color: black}")
 
-            self.freq_ind_df = pd.read_csv(temp_path+'freqs_plot', header=None, names=["freq", "label"], sep='\s+')
-            self.freq_com_df = pd.read_csv(temp_path+'combs_plot', header=None, names=["freq", "label"], sep='\s+')
+            self.freq_ind_df = pd.read_csv(temp_path+'freqs_plot', header=None, names=["freq", "label"], sep=r'\s+')
+            self.freq_com_df = pd.read_csv(temp_path+'combs_plot', header=None, names=["freq", "label"], sep=r'\s+')
             try:
                 for ifl in self.ind_freqs:
                     self.dft.removeItem(ifl)
@@ -367,11 +382,44 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
     def selectionchange(self, styleName):
         if styleName == 'Light Mode':
             file = QtCore.QFile(dir_path + 'styles/light.qss')
+            self.bg_color = '#FFFFFF'
+            self.sympen = self.symbckpen
+            self.text_color = 'k'
         if styleName == 'Dark Mode':
             file = QtCore.QFile(dir_path + 'styles/dark.qss')
+            self.bg_color = '#1C1717'
+            self.sympen = self.symwhipen
+            self.text_color = 'w'
         file.open(QtCore.QFile.ReadOnly | QtCore.QFile.Text)
         stream = QtCore.QTextStream(file)
         self.setStyleSheet(stream.readAll())
+
+        # Update Plots
+        self.lc.setBackground(self.bg_color)
+        self.ph.setBackground(self.bg_color)
+        self.dft.setBackground(self.bg_color)
+
+        for plot in [self.lc, self.ph, self.dft]:
+            plot.getAxis('bottom').setPen(self.text_color)
+            plot.getAxis('left').setPen(self.text_color)
+            plot.getAxis('bottom').setTextPen(self.text_color)
+            plot.getAxis('left').setTextPen(self.text_color)
+
+        self.lc.plotItem.setLabel('left', "Flux/Magnitude", color=self.text_color)
+        self.lc.plotItem.setLabel('bottom', "Time", color=self.text_color)
+        self.ph.plotItem.setLabel('left', "Flux/Magnitude", color=self.text_color)
+        self.ph.plotItem.setLabel('bottom', "Phase", color=self.text_color)
+        self.dft.plotItem.setLabel('left', "Amplitude", color=self.text_color)
+        self.dft.plotItem.setLabel('bottom', "Frequency", color=self.text_color)
+
+        self.curve_lc.setSymbolPen(self.sympen)
+        self.curve_lc.setSymbolBrush(self.sympen)
+        self.curve_ph.setSymbolPen(self.sympen)
+        self.curve_ph.setSymbolBrush(self.sympen)
+        self.curve_dft.setPen(self.sympen)
+
+        self.err_lc.setOpts(pen={'color': self.text_color, 'width': 0.85})
+        self.err_ph.setOpts(pen={'color': self.text_color, 'width': 0.85})
 
     def phase_dial_changed(self):
         self.nofphases = int(self.phase_dial.value())
@@ -440,7 +488,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
         self.startf = self.start_spin.value()
         self.endf = self.end_spin.value()
         self.acc = self.acc_spin.value()
-        self.size_to_find = 100*self.acc
+        self.size_to_find = 5*self.acc
 
     def phase_shift(self):
         self.shift_p = (float(self.phase_slider.value()) - 500.) / 1000. * self.curr_per
@@ -545,20 +593,21 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             except AttributeError:
                 pass
             self.hover_curr_freq = pg.InfiniteLine(pos=mousePoint_dft.x(), pen=self.yelpen)
-            try:
-                xa = self.freq[np.where(np.abs(self.freq - mousePoint_dft.x()) < 0.001)[0][0]-self.size_to_find]
-                xb = self.freq[np.where(np.abs(self.freq - mousePoint_dft.x()) < 0.001)[0][0]+self.size_to_find]
+            self.dft.addItem(self.hover_curr_freq)
+            
+            if len(self.freq) > 0:
+                idx = (np.abs(self.freq - mousePoint_dft.x())).argmin()
+                idx_min = max(0, idx - self.size_to_find)
+                idx_max = min(len(self.freq) - 1, idx + self.size_to_find)
+
+                xa = self.freq[idx_min]
+                xb = self.freq[idx_max]
+
                 self.hover_curr_freqa = pg.InfiniteLine(pos=xa, pen=self.yelpen)
                 self.hover_curr_freqb = pg.InfiniteLine(pos=xb, pen=self.yelpen)
-            except IndexError:
-                pass
-
-            self.dft.addItem(self.hover_curr_freq)
-            try:
+                
                 self.dft.addItem(self.hover_curr_freqa)
                 self.dft.addItem(self.hover_curr_freqb)
-            except AttributeError:
-                pass
             self.statusBar().showMessage(
                 '{:2s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}\t{:>20s}\tx: {:6.3f}   y: {:6.3f}'.format(
                     'LC: ', mousePoint_lc.x(), mousePoint_lc.y(), 'TRF: ', mousePoint_dft.x(), mousePoint_dft.y(), 'PHS: ',
@@ -572,7 +621,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
             self.file_path = self.sender().model().filePath(index)
         except AttributeError:
             pass
-        df_lc = pd.read_csv(self.file_path, delimiter="\s+", header=None)
+        df_lc = pd.read_csv(self.file_path, delimiter=r"\s+", header=None)
         self.time, self.flux, self.ferr = df_lc[0].values, df_lc[1].values, df_lc[2].values
         # try:
         #     subprocess.check_output(['rm', temp_path+'lcf.trf'])
@@ -597,7 +646,7 @@ class lcdftMain(QtGui.QMainWindow, Ui_MainWindow):
                 self.recalcbutton.setText("RECALCULATE")
                 break
         
-        df_dft = pd.read_csv(temp_path+'lcf.trf', delimiter="\s+", header=None)
+        df_dft = pd.read_csv(temp_path+'lcf.trf', delimiter=r"\s+", header=None)
         self.freq, self.ampl = df_dft[0].values, df_dft[1].values
         self.curr_per = 1. / self.freq[np.where(self.ampl == np.max(self.ampl[self.freq > 0.3]))[0][0]]
         self.curr_ampl = np.max(self.ampl[self.freq > 0.3])

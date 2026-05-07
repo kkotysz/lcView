@@ -9,7 +9,7 @@ import pandas as pd
 import os
 
 # dir_path = os.environ['HOME']+'/Dropbox/bin/'
-dir_path = os.path.realpath(__file__).replace(__file__.split('/')[-1], '')
+dir_path = os.path.dirname(os.path.realpath(__file__)) + os.sep
 qtCreatorFile = dir_path + "pet.ui"  # Enter file here.
 
 
@@ -17,10 +17,10 @@ qtCreatorFile = dir_path + "pet.ui"  # Enter file here.
 # data_path = os.environ['HOME']+'/Dropbox/data/'
 data_path = dir_path + "data/"
 
-hads = pd.read_csv(data_path+'hads_mmod2.dat', sep='\s+')
-cep = pd.read_csv(data_path+'cep_mmod2.dat', sep='\s+')
-rrl = pd.read_csv(data_path+'rrl_mmod2.dat', sep='\s+', comment= "#")
-sxphe = pd.read_csv(data_path+'sxphe_mmod2.dat', sep='\s+')
+hads = pd.read_csv(data_path+'hads_mmod2.dat', sep=r'\s+')
+cep = pd.read_csv(data_path+'cep_mmod2.dat', sep=r'\s+')
+rrl = pd.read_csv(data_path+'rrl_mmod2.dat', sep=r'\s+', comment= "#")
+sxphe = pd.read_csv(data_path+'sxphe_mmod2.dat', sep=r'\s+')
 
 
 
@@ -69,10 +69,10 @@ class TableModel(QtCore.QAbstractTableModel):
         return QtCore.QVariant()
 
 
-class petMain(QtGui.QMainWindow, Ui_MainWindow):
+class petMain(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def __init__(self):
-        QtGui.QMainWindow.__init__(self)
+        QtWidgets.QMainWindow.__init__(self)
         Ui_MainWindow.__init__(self)
         pg.setConfigOptions(antialias=True)
         #  self.showMaximized()
@@ -202,9 +202,7 @@ class petMain(QtGui.QMainWindow, Ui_MainWindow):
 
             #  print("{0:s}".format(50*'#'))
             #  print("#  {0:>8s} {1:<8s} {2:>8s} {3:<8s} {4:>8s}".format('f_la','P_sh','f_sm','P_lo','ratio'))
-            for ii,n in zip(perms,range(len(perms))):
-                i = ii[0]
-                j = ii[1]
+            for n, (i, j) in enumerate(perms):
                 i_idx = np.where(self.freqs == i)[0][0]+1
                 j_idx = np.where(self.freqs == j)[0][0]+1
 
@@ -385,4 +383,3 @@ if __name__ == "__main__":
     window.move(0, 0)
     window.show()
     sys.exit(app.exec_())
-

@@ -8,10 +8,6 @@ while [ -L "$SOURCE" ]; do
     [[ "$SOURCE" != /* ]] && SOURCE="$SOURCE_DIR/$SOURCE"
 done
 DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
-TEMP_DIR="$DIR/scripts/.temp_lcView"
 
-rm -rf "$TEMP_DIR"
-mkdir -p "$TEMP_DIR"
-trap 'rm -rf "$TEMP_DIR"' EXIT
-
-python "$DIR/scripts/lcdft.py"
+export PYTHONPATH="$DIR/src${PYTHONPATH:+:$PYTHONPATH}"
+python -m lcview.app "$@"

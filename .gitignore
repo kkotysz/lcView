@@ -2,3 +2,10 @@ scripts/.temp_lcView/
 scripts/fwpeaks
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+.lcview/
+src/lcview/native/_build/

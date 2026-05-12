@@ -7,17 +7,27 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import numpy as np
 
 from lcview.core.combinations import FrequencyCandidate, classify_peak
-from lcview.core.lightcurve import LightCurve
-from lcview.core.phase import FoldedLightCurve, boxcar_smooth, fold_light_curve
+from lcview.core.lightcurve import LightCurve, LightCurveTable, infer_light_curve_columns, read_light_curve_table
+from lcview.core.phase import FoldedLightCurve, PhaseSeriesFit, boxcar_smooth, evaluate_sincos_series, fold_light_curve
 from lcview.core.prewhitening import PrewhiteningEngine
 from lcview.core.sigma_clip import sigma_clip_light_curve
+from lcview.core.session import SessionState
 from lcview.core.tdfd import run_tdfd
-from lcview.display import frequency_text, period_text_from_frequency, sig_text
+from lcview.display import fixed_text, frequency_text, period_text_from_frequency
+from .column_selection_dialog import ColumnSelectionDialog
 from .detrend_dialog import DetrendDialog
 from .plots import PlotPane
 from .prewhitening_panel import PrewhiteningPanel
+from .sigma_clip_dialog import SigmaClipDialog
 from .tdfd_panel import TdfdPanel
 from .widgets import SignificantDoubleSpinBox
+
+
+DEFAULT_WINDOW_SIZE = QtCore.QSize(1440, 900)
+WINDOW_SCREEN_MARGIN = 40
+PHASE_TAB_TITLE = "Phase"
+DAILY_ALIAS_OFFSET = 1.0
+YEARLY_ALIAS_OFFSET = 1.0 / 365.25
 
 
 class DftWorker(QtCore.QObject):
@@ -25,14 +35,15 @@ class DftWorker(QtCore.QObject):
     finished = QtCore.Signal(object, object)
     failed = QtCore.Signal(str)
 
-    def __init__(self, engine: PrewhiteningEngine) -> None:
+    def __init__(self, engine: PrewhiteningEngine, *, backend: str = "fwpeaks") -> None:
         super().__init__()
         self.engine = engine
+        self.backend = backend
 
     @QtCore.Slot()
     def run(self) -> None:
         try:
-            periodogram = self.engine.compute_periodogram(progress_callback=self.progress.emit)
+            periodogram = self.engine.compute_periodogram(progress_callback=self.progress.emit, backend=self.backend)
             self.finished.emit(periodogram, self.engine.last_candidates)
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -40,44 +51,64 @@ class DftWorker(QtCore.QObject):
 
 class FitWorker(QtCore.QObject):
     progress = QtCore.Signal(int, str)
-    finished = QtCore.Signal(object, object, object)
+    finished = QtCore.Signal(object, object, object, bool)
     failed = QtCore.Signal(str)
 
-    def __init__(self, engine: PrewhiteningEngine) -> None:
+    def __init__(
+        self,
+        engine: PrewhiteningEngine,
+        *,
+        refine_frequencies: bool = False,
+        refresh_periodogram: bool = False,
+    ) -> None:
         super().__init__()
         self.engine = engine
+        self.refine_frequencies = refine_frequencies
+        self.refresh_periodogram = refresh_periodogram
 
     @QtCore.Slot()
     def run(self) -> None:
         try:
-            self.progress.emit(0, "Fitting model")
-            fit = self.engine.fit_model()
-            self.progress.emit(65, "Refreshing DFT")
-            fit_progress = lambda percent, message: self.progress.emit(65 + int(percent * 0.35), message)
-            periodogram = self.engine.compute_periodogram(fit.residuals, progress_callback=fit_progress)
-            candidates = self.engine.last_candidates
-            self.finished.emit(fit, periodogram, candidates)
+            message = "Refining frequencies" if self.refine_frequencies else "Fitting fixed-frequency model"
+            self.progress.emit(5, message)
+            fit = self.engine.fit_model(refine_frequencies=self.refine_frequencies)
+            periodogram = None
+            candidates = []
+            if self.refresh_periodogram:
+                self.progress.emit(65, "Refreshing DFT")
+                fit_progress = lambda percent, msg: self.progress.emit(65 + int(percent * 0.35), msg)
+                periodogram = self.engine.compute_periodogram(fit.residuals, progress_callback=fit_progress)
+                candidates = self.engine.last_candidates
+            self.finished.emit(fit, periodogram, candidates, self.refresh_periodogram)
         except Exception as exc:
             self.failed.emit(str(exc))
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, path: str | Path | None = None) -> None:
+    def __init__(self, path: str | Path | None = None, *, dft_backend: str | None = None) -> None:
         super().__init__()
         self.setWindowTitle("lcView prewhitening")
-        self.resize(1440, 900)
         self.engine: PrewhiteningEngine | None = None
+        self._initial_dft_backend = dft_backend
         self._thread: QtCore.QThread | None = None
         self._worker: QtCore.QObject | None = None
         self.selected_frequency: float | None = None
         self.selected_base_index: int | None = None
         self.selected_amplitude: float | None = None
+        self.selected_marker_label = ""
+        self.selected_coefficients: tuple[int, ...] | None = None
         self._syncing_phase_controls = False
         self._phase_last_edited = "period"
         self._pending_phase_text: dict[str, str | None] = {"period": None, "frequency": None}
         self._current_light_curve_plot: LightCurve | None = None
+        self._current_periodogram_plot = None
+        self._current_fit = None
+        self._pending_column_table: LightCurveTable | None = None
+        self._pending_column_selection: tuple[int, int, int] | None = None
+        self._syncing_frequency_phase_controls = False
 
         self._build_ui()
+        self._set_initial_geometry()
         if path is not None:
             self.load_file(Path(path))
 
@@ -113,16 +144,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.precision_spin = QtWidgets.QDoubleSpinBox()
         self.precision_spin.setRange(1, 500)
         self.precision_spin.setValue(10)
+        self.dft_backend_combo = QtWidgets.QComboBox()
+        self.dft_backend_combo.addItem("fwpeaks (native)", "fwpeaks")
+        self.dft_backend_combo.addItem("Python DFT (manual)", "python")
+        self.dft_backend_combo.setToolTip("fwpeaks is the normal backend. Python DFT is a slower explicit fallback.")
         self.recalc_button = QtWidgets.QPushButton("Calculate DFT")
         form.addRow("Start frequency", self.start_spin)
         form.addRow("End frequency", self.end_spin)
         form.addRow("Precision", self.precision_spin)
+        form.addRow("DFT backend", self.dft_backend_combo)
         left_layout.addLayout(form)
         left_layout.addWidget(self.recalc_button)
         self.dft_progress = QtWidgets.QProgressBar()
         self.dft_progress.setRange(0, 100)
         self.dft_progress.setValue(0)
         self.dft_progress.setTextVisible(True)
+        self.dft_progress.setFormat("%p%")
         self.progress_label = QtWidgets.QLabel("Idle")
         left_layout.addWidget(self.dft_progress)
         left_layout.addWidget(self.progress_label)
@@ -133,8 +170,8 @@ class MainWindow(QtWidgets.QMainWindow):
         selection_layout.addWidget(self.selection_label)
         left_layout.addWidget(selection_group)
 
-        phase_group = QtWidgets.QGroupBox("Phase controls")
-        phase_layout = QtWidgets.QFormLayout(phase_group)
+        self.phase_controls_group = QtWidgets.QGroupBox("Phase controls")
+        phase_layout = QtWidgets.QFormLayout(self.phase_controls_group)
         self.phase_period_spin = SignificantDoubleSpinBox(digits=10)
         self.phase_period_spin.setRange(0.0000001, 1_000_000.0)
         self.phase_period_spin.setSingleStep(0.00001)
@@ -175,12 +212,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.smooth_window_spin = QtWidgets.QSpinBox()
         self.smooth_window_spin.setRange(1, 1_000_000)
         self.smooth_window_spin.setValue(3)
+        self.phase_fit_check = QtWidgets.QCheckBox("Sin/cos fit")
+        self.phase_fit_check.setToolTip("Fit a sin/cos series in phase; accepted harmonic terms are included automatically.")
         self.hide_phase_check = QtWidgets.QCheckBox("Hide raw phase")
         self.phase_errors_check = QtWidgets.QCheckBox("Errors")
         smooth_controls = QtWidgets.QHBoxLayout()
         smooth_controls.addWidget(self.smooth_check)
         smooth_controls.addWidget(QtWidgets.QLabel("Window"))
         smooth_controls.addWidget(self.smooth_window_spin)
+        smooth_controls.addWidget(self.phase_fit_check)
         smooth_controls.addStretch(1)
         self.phase_source_combo = QtWidgets.QComboBox()
         self.phase_source_combo.addItem("Residual", "residual")
@@ -200,17 +240,66 @@ class MainWindow(QtWidgets.QMainWindow):
         phase_layout.addRow(self.phase_errors_check)
         phase_layout.addRow("Source", self.phase_source_combo)
         phase_layout.addRow(phase_buttons)
-        left_layout.addWidget(phase_group)
+        left_layout.addWidget(self.phase_controls_group)
 
         self.prewhitening_panel = PrewhiteningPanel()
         left_layout.addWidget(self.prewhitening_panel, 1)
-        central.addWidget(left)
 
-        tabs = QtWidgets.QTabWidget()
+        left_scroll = QtWidgets.QScrollArea()
+        left_scroll.setWidget(left)
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        central.addWidget(left_scroll)
+
+        self.tabs = QtWidgets.QTabWidget()
+        lc_view = QtWidgets.QWidget()
+        lc_view_layout = QtWidgets.QVBoxLayout(lc_view)
+        lc_view_layout.setContentsMargins(0, 0, 0, 0)
+        lc_controls = QtWidgets.QHBoxLayout()
+        self.light_curve_errors_check = QtWidgets.QCheckBox("Errors")
+        self.light_curve_errors_check.setToolTip("Show light-curve error bars. Disabled by default for large data sets.")
+        self.magnitude_axis_check = QtWidgets.QCheckBox("Mag axis")
+        self.magnitude_axis_check.setToolTip("Invert Y axes for magnitude data. This changes display only, not calculations.")
+        lc_controls.addWidget(self.light_curve_errors_check)
+        lc_controls.addWidget(self.magnitude_axis_check)
+        lc_controls.addStretch(1)
+        lc_view_layout.addLayout(lc_controls)
         self.lc_plot = PlotPane("Light curve")
         self.lc_plot.set_labels("Flux", "Time")
+        lc_view_layout.addWidget(self.lc_plot, 1)
+
+        dft_view = QtWidgets.QWidget()
+        dft_view_layout = QtWidgets.QVBoxLayout(dft_view)
+        dft_view_layout.setContentsMargins(0, 0, 0, 0)
+        dft_controls = QtWidgets.QHBoxLayout()
+        self.dft_snr5_check = QtWidgets.QCheckBox("5 S/N")
+        self.dft_snr5_check.setChecked(True)
+        self.dft_snr5_check.setToolTip("Show the global amplitude threshold corresponding to S/N=5.")
+        self.dft_accepted_markers_check = QtWidgets.QCheckBox("Accepted markers")
+        self.dft_accepted_markers_check.setChecked(True)
+        self.dft_accepted_markers_check.setToolTip("Show accepted model frequencies on the DFT plot.")
+        self.dft_peak_markers_check = QtWidgets.QCheckBox("Peak markers")
+        self.dft_peak_markers_check.setChecked(True)
+        self.dft_peak_markers_check.setToolTip("Show prominent DFT peaks from the current calculation.")
+        self.dft_daily_aliases_check = QtWidgets.QCheckBox("Daily aliases")
+        self.dft_daily_aliases_check.setToolTip("Show +/- 1 1/d aliases for accepted and selected frequencies.")
+        self.dft_yearly_aliases_check = QtWidgets.QCheckBox("Yearly aliases")
+        self.dft_yearly_aliases_check.setToolTip("Show +/- 1/365.25 1/d aliases for accepted and selected frequencies.")
+        for checkbox in (
+            self.dft_snr5_check,
+            self.dft_accepted_markers_check,
+            self.dft_peak_markers_check,
+            self.dft_daily_aliases_check,
+            self.dft_yearly_aliases_check,
+        ):
+            dft_controls.addWidget(checkbox)
+        dft_controls.addStretch(1)
+        dft_view_layout.addLayout(dft_controls)
         self.dft_plot = PlotPane("DFT")
         self.dft_plot.set_labels("Amplitude", "Frequency")
+        dft_view_layout.addWidget(self.dft_plot, 1)
+
         self.phase_plot = PlotPane("Phase")
         self.phase_plot.set_labels("Flux", "Phase")
         self.tdfd_panel = TdfdPanel()
@@ -219,9 +308,65 @@ class MainWindow(QtWidgets.QMainWindow):
         freq_controls = QtWidgets.QHBoxLayout()
         self.frequency_view_combo = QtWidgets.QComboBox()
         self.frequency_view_combo.setMinimumWidth(240)
+        self.frequency_fit_check = QtWidgets.QCheckBox("Sin/cos fit")
+        self.frequency_fit_check.setToolTip("Show the Fourier model fit on both the time plot and folded phase plot.")
         freq_controls.addWidget(QtWidgets.QLabel("Frequency"))
         freq_controls.addWidget(self.frequency_view_combo, 1)
+        freq_controls.addWidget(self.frequency_fit_check)
         freq_view_layout.addLayout(freq_controls)
+        freq_phase_group = QtWidgets.QGroupBox("Phase controls")
+        freq_phase_layout = QtWidgets.QFormLayout(freq_phase_group)
+        self.frequency_period_spin = SignificantDoubleSpinBox(digits=10)
+        self.frequency_period_spin.setRange(0.0000001, 1_000_000.0)
+        self.frequency_period_spin.setSingleStep(0.00001)
+        self.frequency_period_spin.setKeyboardTracking(False)
+        self.frequency_frequency_spin = SignificantDoubleSpinBox(digits=10)
+        self.frequency_frequency_spin.setRange(0.0000001, 1_000_000.0)
+        self.frequency_frequency_spin.setSingleStep(0.00001)
+        self.frequency_frequency_spin.setKeyboardTracking(False)
+        freq_period_controls = QtWidgets.QHBoxLayout()
+        self.frequency_period_double_button = QtWidgets.QPushButton("x2")
+        self.frequency_period_half_button = QtWidgets.QPushButton("/2")
+        freq_period_controls.addWidget(self.frequency_period_spin, 1)
+        freq_period_controls.addWidget(self.frequency_period_double_button)
+        freq_period_controls.addWidget(self.frequency_period_half_button)
+        freq_frequency_controls = QtWidgets.QHBoxLayout()
+        self.frequency_frequency_double_button = QtWidgets.QPushButton("x2")
+        self.frequency_frequency_half_button = QtWidgets.QPushButton("/2")
+        freq_frequency_controls.addWidget(self.frequency_frequency_spin, 1)
+        freq_frequency_controls.addWidget(self.frequency_frequency_double_button)
+        freq_frequency_controls.addWidget(self.frequency_frequency_half_button)
+        self.frequency_repeats_spin = QtWidgets.QSpinBox()
+        self.frequency_repeats_spin.setRange(1, 4)
+        self.frequency_shift_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.frequency_shift_slider.setRange(-500, 500)
+        self.frequency_shift_label = QtWidgets.QLabel("+0.000")
+        freq_shift_controls = QtWidgets.QHBoxLayout()
+        freq_shift_controls.addWidget(self.frequency_shift_slider, 1)
+        freq_shift_controls.addWidget(self.frequency_shift_label)
+        self.frequency_smooth_check = QtWidgets.QCheckBox("Smooth")
+        self.frequency_smooth_window_spin = QtWidgets.QSpinBox()
+        self.frequency_smooth_window_spin.setRange(1, 1_000_000)
+        self.frequency_hide_phase_check = QtWidgets.QCheckBox("Hide raw phase")
+        self.frequency_errors_check = QtWidgets.QCheckBox("Errors")
+        self.frequency_source_combo = QtWidgets.QComboBox()
+        self.frequency_source_combo.addItem("Residual", "residual")
+        self.frequency_source_combo.addItem("Original", "original")
+        self.frequency_source_combo.addItem("Selected component (resid0X)", "component")
+        freq_overlay_controls = QtWidgets.QHBoxLayout()
+        freq_overlay_controls.addWidget(self.frequency_smooth_check)
+        freq_overlay_controls.addWidget(QtWidgets.QLabel("Window"))
+        freq_overlay_controls.addWidget(self.frequency_smooth_window_spin)
+        freq_overlay_controls.addWidget(self.frequency_hide_phase_check)
+        freq_overlay_controls.addWidget(self.frequency_errors_check)
+        freq_overlay_controls.addStretch(1)
+        freq_phase_layout.addRow("Period [d]", freq_period_controls)
+        freq_phase_layout.addRow("Frequency [1/d]", freq_frequency_controls)
+        freq_phase_layout.addRow("Phases", self.frequency_repeats_spin)
+        freq_phase_layout.addRow("Shift [cycle]", freq_shift_controls)
+        freq_phase_layout.addRow(freq_overlay_controls)
+        freq_phase_layout.addRow("Source", self.frequency_source_combo)
+        freq_view_layout.addWidget(freq_phase_group)
         freq_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self.frequency_lc_plot = PlotPane("Selected frequency light curve")
         self.frequency_lc_plot.set_labels("Flux", "Time")
@@ -232,13 +377,13 @@ class MainWindow(QtWidgets.QMainWindow):
         freq_view_layout.addWidget(freq_split, 1)
         self.petersen_text = QtWidgets.QPlainTextEdit()
         self.petersen_text.setReadOnly(True)
-        tabs.addTab(self.lc_plot, "Light curve")
-        tabs.addTab(self.dft_plot, "DFT")
-        tabs.addTab(self.phase_plot, "Phase")
-        tabs.addTab(freq_view, "Frequency views")
-        tabs.addTab(self.tdfd_panel, "TDFD")
-        tabs.addTab(self.petersen_text, "Petersen")
-        central.addWidget(tabs)
+        self.tabs.addTab(lc_view, "Light curve")
+        self.tabs.addTab(dft_view, "DFT")
+        self.phase_tab_index = self.tabs.addTab(self.phase_plot, PHASE_TAB_TITLE)
+        self.tabs.addTab(freq_view, "Frequency views")
+        self.tabs.addTab(self.tdfd_panel, "TDFD")
+        self.tabs.addTab(self.petersen_text, "Petersen")
+        central.addWidget(self.tabs)
         central.setSizes([460, 980])
 
         self.recalc_button.clicked.connect(self.start_dft)
@@ -256,24 +401,53 @@ class MainWindow(QtWidgets.QMainWindow):
         self.phase_shift_slider.valueChanged.connect(self._phase_shift_changed)
         self.smooth_check.stateChanged.connect(lambda _: self._phase_current_period())
         self.smooth_window_spin.valueChanged.connect(lambda _: self._phase_current_period())
+        self.phase_fit_check.stateChanged.connect(lambda _: self._phase_current_period())
         self.hide_phase_check.stateChanged.connect(lambda _: self._phase_current_period())
         self.phase_errors_check.stateChanged.connect(lambda _: self._phase_current_period())
         self.phase_source_combo.currentIndexChanged.connect(lambda _: self._phase_now_clicked())
+        self.tabs.currentChanged.connect(self._active_tab_changed)
+        self.light_curve_errors_check.stateChanged.connect(lambda _: self._light_curve_options_changed())
+        self.magnitude_axis_check.stateChanged.connect(lambda _: self._magnitude_axis_changed())
+        self.dft_snr5_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.dft_accepted_markers_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.dft_peak_markers_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.dft_daily_aliases_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.dft_yearly_aliases_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.tdfd_panel.legend_check.stateChanged.connect(lambda _: self._settings_changed())
         self.use_selected_button.clicked.connect(self._use_selected_period)
         self.phase_now_button.clicked.connect(self._phase_now_clicked)
         self.frequency_view_combo.currentIndexChanged.connect(self._frequency_view_changed)
+        self.frequency_fit_check.stateChanged.connect(lambda _: self._frequency_view_options_changed())
+        self.frequency_period_spin.valueChanged.connect(self._frequency_period_changed)
+        self.frequency_frequency_spin.valueChanged.connect(self._frequency_frequency_changed)
+        self.frequency_period_spin.editingFinished.connect(lambda: self._frequency_period_changed(self.frequency_period_spin.value()))
+        self.frequency_frequency_spin.editingFinished.connect(lambda: self._frequency_frequency_changed(self.frequency_frequency_spin.value()))
+        self.frequency_period_double_button.clicked.connect(lambda: self._scale_phase_period(2.0))
+        self.frequency_period_half_button.clicked.connect(lambda: self._scale_phase_period(0.5))
+        self.frequency_frequency_double_button.clicked.connect(lambda: self._scale_phase_frequency(2.0))
+        self.frequency_frequency_half_button.clicked.connect(lambda: self._scale_phase_frequency(0.5))
+        self.frequency_repeats_spin.valueChanged.connect(lambda value: self._frequency_repeats_changed(value))
+        self.frequency_shift_slider.valueChanged.connect(lambda value: self.phase_shift_slider.setValue(value))
+        self.frequency_smooth_check.stateChanged.connect(lambda _: self._frequency_phase_checkbox_changed(self.smooth_check, self.frequency_smooth_check))
+        self.frequency_smooth_window_spin.valueChanged.connect(lambda value: self._frequency_smooth_window_changed(value))
+        self.frequency_hide_phase_check.stateChanged.connect(lambda _: self._frequency_phase_checkbox_changed(self.hide_phase_check, self.frequency_hide_phase_check))
+        self.frequency_errors_check.stateChanged.connect(lambda _: self._frequency_phase_checkbox_changed(self.phase_errors_check, self.frequency_errors_check))
+        self.frequency_source_combo.currentIndexChanged.connect(self._frequency_source_changed)
         self.start_spin.valueChanged.connect(self._settings_changed)
         self.end_spin.valueChanged.connect(self._settings_changed)
         self.precision_spin.valueChanged.connect(self._settings_changed)
+        self.dft_backend_combo.currentIndexChanged.connect(self._settings_changed)
         self.dft_plot.clicked_x.connect(self._dft_clicked)
         self.prewhitening_panel.frequency_selected.connect(self._frequency_row_selected)
         self.prewhitening_panel.candidate_selected.connect(self._candidate_selected)
         self.prewhitening_panel.add_independent_requested.connect(self._add_independent)
         self.prewhitening_panel.add_candidate_requested.connect(self._add_candidate)
+        self.prewhitening_panel.base_frequency_edited.connect(self._edit_base_frequency)
         self.prewhitening_panel.remove_term_requested.connect(self._remove_term)
         self.prewhitening_panel.clear_frequencies_requested.connect(self._clear_frequencies)
         self.prewhitening_panel.toggle_term_requested.connect(self._toggle_term)
         self.prewhitening_panel.fit_requested.connect(self.start_fit)
+        self.prewhitening_panel.refine_requested.connect(self.start_refine_fit)
         self.prewhitening_panel.undo_requested.connect(self._undo)
         self.prewhitening_panel.redo_requested.connect(self._redo)
         self.prewhitening_panel.export_requested.connect(self._export)
@@ -281,6 +455,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.prewhitening_panel.sigma_clip_requested.connect(self._sigma_clip)
         self.prewhitening_panel.tdfd_requested.connect(lambda: self._run_tdfd(self.tdfd_panel.bins_spin.value()))
         self.tdfd_panel.run_requested.connect(self._run_tdfd)
+        self._sync_frequency_phase_controls_from_main()
+        self._active_tab_changed(self.tabs.currentIndex())
+
+    def _set_initial_geometry(self) -> None:
+        screen = QtGui.QGuiApplication.primaryScreen()
+        if screen is None:
+            self.resize(DEFAULT_WINDOW_SIZE)
+            return
+
+        available = screen.availableGeometry()
+        max_width = max(1, available.width() - WINDOW_SCREEN_MARGIN)
+        max_height = max(1, available.height() - WINDOW_SCREEN_MARGIN)
+        width = min(DEFAULT_WINDOW_SIZE.width(), max_width)
+        height = min(DEFAULT_WINDOW_SIZE.height(), max_height)
+        x = available.x() + max(0, (available.width() - width) // 2)
+        y = available.y() + max(0, (available.height() - height) // 2)
+        self.setGeometry(x, y, width, height)
+
+    @QtCore.Slot(int)
+    def _active_tab_changed(self, index: int) -> None:
+        self.phase_controls_group.setVisible(index == self.phase_tab_index)
 
     @QtCore.Slot()
     def open_file(self) -> None:
@@ -290,11 +485,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def load_file(self, path: Path) -> None:
         try:
-            self.engine = PrewhiteningEngine.from_file(path)
+            columns = self._light_curve_columns_for_file(path)
+            if columns is None:
+                self.statusBar().showMessage("Load canceled")
+                return
+            self.engine = PrewhiteningEngine.from_file(path, columns=columns)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Load failed", str(exc))
             return
         settings = self.engine.state.settings
+        if self._initial_dft_backend is not None:
+            settings.dft_backend = self._initial_dft_backend
+        self._set_dft_backend(settings.dft_backend)
+        self._set_checkbox_checked(self.dft_snr5_check, settings.show_dft_snr5)
+        self._set_checkbox_checked(self.dft_accepted_markers_check, settings.show_dft_accepted_markers)
+        self._set_checkbox_checked(self.dft_peak_markers_check, settings.show_dft_peak_markers)
+        self._set_checkbox_checked(self.dft_daily_aliases_check, settings.show_dft_daily_aliases)
+        self._set_checkbox_checked(self.dft_yearly_aliases_check, settings.show_dft_yearly_aliases)
+        self._set_checkbox_checked(self.light_curve_errors_check, settings.show_light_curve_errors)
+        self._set_checkbox_checked(self.magnitude_axis_check, self._initial_magnitude_axis_setting(settings.invert_y_axis))
+        settings.invert_y_axis = self.magnitude_axis_check.isChecked()
+        self.tdfd_panel.set_legend_visible(settings.show_tdfd_legend)
+        self._pending_column_table = None
+        self._pending_column_selection = None
+        self._apply_brightness_axis_direction()
+        self.engine.save_state()
         self.start_spin.setValue(settings.start_frequency)
         self.end_spin.setValue(settings.end_frequency)
         self.precision_spin.setValue(settings.precision)
@@ -303,6 +518,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plot_light_curve(self.engine.light_curve)
         self.selected_frequency = None
         self.selected_base_index = None
+        self.selected_amplitude = None
+        self.selected_marker_label = ""
+        self.selected_coefficients = None
+        self._current_periodogram_plot = None
+        self._current_fit = None
+        self.dft_plot.clear()
         self.dft_plot.clear_selected_marker()
         self.statusBar().showMessage(f"Loaded {path}")
         if self.engine.model.active_terms():
@@ -310,13 +531,171 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.start_dft()
 
+    def _light_curve_columns_for_file(self, path: Path) -> tuple[int, int, int] | None:
+        table = read_light_curve_table(path)
+        self._pending_column_table = table
+        self._pending_column_selection = None
+        if table.column_count < 3:
+            raise ValueError(f"Need at least three columns in {path}")
+        if table.column_count == 3:
+            columns = infer_light_curve_columns(table)
+            self._pending_column_selection = columns
+            return columns
+        initial_columns = None
+        state = SessionState.for_light_curve(path)
+        settings = state.settings
+        if settings.time_column is not None and settings.flux_column is not None and settings.error_column is not None:
+            initial = (settings.time_column, settings.flux_column, settings.error_column)
+            if all(0 <= column < table.column_count for column in initial) and len(set(initial)) == 3:
+                initial_columns = initial
+        dialog = ColumnSelectionDialog(table, self, initial_columns=initial_columns)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return None
+        columns = dialog.selected_columns()
+        self._pending_column_selection = columns
+        return columns
+
+    def _initial_magnitude_axis_setting(self, saved_invert_y_axis: bool) -> bool:
+        if saved_invert_y_axis:
+            return True
+        if self._pending_column_table is None or self._pending_column_selection is None:
+            return False
+        flux_column = self._pending_column_selection[1]
+        if flux_column < 0 or flux_column >= self._pending_column_table.column_count:
+            return False
+        name = self._pending_column_table.column_names[flux_column].strip().lower()
+        return any(token in name for token in ("mag", "magnitude"))
+
     def _settings_changed(self) -> None:
         if self.engine is None:
             return
         self.engine.state.settings.start_frequency = self.start_spin.value()
         self.engine.state.settings.end_frequency = self.end_spin.value()
         self.engine.state.settings.precision = self.precision_spin.value()
+        self.engine.state.settings.dft_backend = self.dft_backend_combo.currentData() or "fwpeaks"
+        self.engine.state.settings.show_dft_snr5 = self.dft_snr5_check.isChecked()
+        self.engine.state.settings.show_dft_accepted_markers = self.dft_accepted_markers_check.isChecked()
+        self.engine.state.settings.show_dft_peak_markers = self.dft_peak_markers_check.isChecked()
+        self.engine.state.settings.show_dft_daily_aliases = self.dft_daily_aliases_check.isChecked()
+        self.engine.state.settings.show_dft_yearly_aliases = self.dft_yearly_aliases_check.isChecked()
+        self.engine.state.settings.show_light_curve_errors = self.light_curve_errors_check.isChecked()
+        self.engine.state.settings.invert_y_axis = self.magnitude_axis_check.isChecked()
+        self.engine.state.settings.show_tdfd_legend = self.tdfd_panel.legend_check.isChecked()
         self.engine.save_state()
+
+    def _light_curve_options_changed(self) -> None:
+        self._settings_changed()
+        if self._current_light_curve_plot is not None:
+            self._plot_light_curve(self._current_light_curve_plot)
+
+    def _dft_options_changed(self) -> None:
+        self._settings_changed()
+        self._refresh_dft_overlays()
+
+    def _magnitude_axis_changed(self) -> None:
+        self._settings_changed()
+        self._apply_brightness_axis_direction()
+        self._refresh_brightness_plots()
+
+    def _set_dft_backend(self, backend: str) -> None:
+        index = self.dft_backend_combo.findData(backend)
+        if index < 0:
+            index = self.dft_backend_combo.findData("fwpeaks")
+        self.dft_backend_combo.blockSignals(True)
+        self.dft_backend_combo.setCurrentIndex(index)
+        self.dft_backend_combo.blockSignals(False)
+
+    @staticmethod
+    def _set_checkbox_checked(checkbox: QtWidgets.QCheckBox, checked: bool) -> None:
+        checkbox.blockSignals(True)
+        checkbox.setChecked(bool(checked))
+        checkbox.blockSignals(False)
+
+    @staticmethod
+    def _set_spin_value(spin: QtWidgets.QAbstractSpinBox, value) -> None:
+        spin.blockSignals(True)
+        spin.setValue(value)
+        spin.blockSignals(False)
+
+    @staticmethod
+    def _set_combo_data(combo: QtWidgets.QComboBox, data) -> None:
+        index = combo.findData(data)
+        if index < 0:
+            index = 0
+        combo.blockSignals(True)
+        combo.setCurrentIndex(index)
+        combo.blockSignals(False)
+
+    def _sync_frequency_phase_controls_from_main(self) -> None:
+        if not hasattr(self, "frequency_period_spin"):
+            return
+        self._syncing_frequency_phase_controls = True
+        self._set_spin_value(self.frequency_period_spin, self.phase_period_spin.value())
+        self._set_spin_value(self.frequency_frequency_spin, self.phase_frequency_spin.value())
+        self._set_spin_value(self.frequency_repeats_spin, self.phase_repeats_spin.value())
+        self._set_spin_value(self.frequency_shift_slider, self.phase_shift_slider.value())
+        self.frequency_shift_label.setText(self.phase_shift_label.text())
+        self._set_checkbox_checked(self.frequency_smooth_check, self.smooth_check.isChecked())
+        self._set_spin_value(self.frequency_smooth_window_spin, self.smooth_window_spin.value())
+        self._set_checkbox_checked(self.frequency_hide_phase_check, self.hide_phase_check.isChecked())
+        self._set_checkbox_checked(self.frequency_errors_check, self.phase_errors_check.isChecked())
+        self._set_combo_data(self.frequency_source_combo, self.phase_source_combo.currentData())
+        self._syncing_frequency_phase_controls = False
+
+    def _frequency_period_changed(self, period: float) -> None:
+        if self._syncing_frequency_phase_controls or period <= 0:
+            return
+        self._phase_last_edited = "period"
+        self._set_phase_values(period=period)
+        self._phase_current_period()
+
+    def _frequency_frequency_changed(self, frequency: float) -> None:
+        if self._syncing_frequency_phase_controls or frequency <= 0:
+            return
+        self._phase_last_edited = "frequency"
+        self._set_phase_values(frequency=frequency)
+        self._phase_current_period()
+
+    def _frequency_repeats_changed(self, value: int) -> None:
+        if self._syncing_frequency_phase_controls:
+            return
+        self.phase_repeats_spin.setValue(value)
+
+    def _frequency_smooth_window_changed(self, value: int) -> None:
+        if self._syncing_frequency_phase_controls:
+            return
+        self.smooth_window_spin.setValue(value)
+
+    def _frequency_phase_checkbox_changed(self, target: QtWidgets.QCheckBox, source: QtWidgets.QCheckBox) -> None:
+        if self._syncing_frequency_phase_controls:
+            return
+        target.setChecked(source.isChecked())
+
+    def _frequency_source_changed(self, index: int) -> None:
+        if self._syncing_frequency_phase_controls:
+            return
+        data = self.frequency_source_combo.itemData(index)
+        target_index = self.phase_source_combo.findData(data)
+        if target_index >= 0:
+            self.phase_source_combo.setCurrentIndex(target_index)
+
+    def _brightness_axis_label(self) -> str:
+        return "Magnitude" if self.magnitude_axis_check.isChecked() else "Flux"
+
+    def _apply_brightness_axis_direction(self) -> None:
+        inverted = self.magnitude_axis_check.isChecked()
+        label = self._brightness_axis_label()
+        for plot in (self.lc_plot, self.phase_plot, self.frequency_lc_plot, self.frequency_phase_plot):
+            plot.set_y_inverted(inverted)
+        self.lc_plot.set_labels(label, "Time")
+        self.phase_plot.set_labels(label, "Phase")
+        self.frequency_lc_plot.set_labels(label, "Time")
+        self.frequency_phase_plot.set_labels(label, "Phase")
+
+    def _refresh_brightness_plots(self) -> None:
+        if self._current_light_curve_plot is not None:
+            self._plot_light_curve(self._current_light_curve_plot)
+        self._phase_current_period()
 
     def _run_worker(self, worker: QtCore.QObject, start_slot) -> None:
         if self._thread is not None:
@@ -339,12 +718,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def start_dft(self) -> None:
         if self.engine is None:
             return
+        if self._thread is not None:
+            self.statusBar().showMessage("A calculation is already running")
+            return
         self._settings_changed()
-        self.recalc_button.setEnabled(False)
+        self._set_calculation_controls_enabled(False)
         self.dft_progress.setValue(0)
-        self.progress_label.setText("Starting DFT")
-        self.statusBar().showMessage("Calculating DFT...")
-        worker = DftWorker(self.engine)
+        backend = self.engine.state.settings.dft_backend
+        self.progress_label.setText("Starting DFT (0%)")
+        self.statusBar().showMessage(f"Calculating DFT with {backend}...")
+        worker = DftWorker(self.engine, backend=backend)
         worker.progress.connect(self._progress_changed)
         worker.finished.connect(self._dft_finished)
         worker.failed.connect(self._worker_failed)
@@ -352,13 +735,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot()
     def start_fit(self) -> None:
+        self._start_fit(refine_frequencies=False, refresh_periodogram=False)
+
+    def start_fit_and_dft(self) -> None:
+        self._start_fit(refine_frequencies=False, refresh_periodogram=True)
+
+    @QtCore.Slot()
+    def start_refine_fit(self) -> None:
+        self._start_fit(refine_frequencies=True, refresh_periodogram=False)
+
+    def _start_fit(self, *, refine_frequencies: bool, refresh_periodogram: bool) -> None:
         if self.engine is None:
             return
-        self.recalc_button.setEnabled(False)
+        if self._thread is not None:
+            self.statusBar().showMessage("A calculation is already running")
+            return
+        self._set_calculation_controls_enabled(False)
         self.dft_progress.setValue(0)
-        self.progress_label.setText("Starting fit")
-        self.statusBar().showMessage("Fitting prewhitening model...")
-        worker = FitWorker(self.engine)
+        if refine_frequencies:
+            self.progress_label.setText("Starting frequency refinement")
+            self.statusBar().showMessage("Refining accepted frequencies...")
+        elif refresh_periodogram:
+            backend = self.engine.state.settings.dft_backend
+            self.progress_label.setText("Starting fit + DFT")
+            self.statusBar().showMessage(f"Fitting model, then refreshing DFT with {backend}...")
+        else:
+            self.progress_label.setText("Starting fit")
+            self.statusBar().showMessage("Fitting model. DFT will not be refreshed automatically.")
+        worker = FitWorker(self.engine, refine_frequencies=refine_frequencies, refresh_periodogram=refresh_periodogram)
         worker.progress.connect(self._progress_changed)
         worker.finished.connect(self._fit_finished)
         worker.failed.connect(self._worker_failed)
@@ -367,51 +771,167 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(object, object)
     def _dft_finished(self, periodogram, candidates) -> None:
         self._finish_thread()
-        self.recalc_button.setEnabled(True)
-        self._progress_changed(100, "DFT ready")
+        self._set_calculation_controls_enabled(True)
+        backend = "fwpeaks" if periodogram.used_native else "Python fallback"
+        self._progress_changed(100, f"DFT ready ({backend})")
         self._plot_periodogram(periodogram)
-        self.prewhitening_panel.set_candidates(candidates)
-        if periodogram.best_frequency:
+        status_message = f"DFT ready ({backend}, {len(periodogram.frequency)} points, {len(candidates)} candidates)"
+        self.statusBar().showMessage(status_message)
+        selected = self._set_candidates_and_select(candidates)
+        if selected is None and periodogram.best_frequency:
             self._select_frequency(periodogram.best_frequency, amplitude=float(np.max(periodogram.amplitude)), label="best peak")
+            selected = True
+        if selected is None:
+            self.statusBar().showMessage(status_message)
 
-    @QtCore.Slot(object, object, object)
-    def _fit_finished(self, fit, periodogram, candidates) -> None:
+    @QtCore.Slot(object, object, object, bool)
+    def _fit_finished(self, fit, periodogram, candidates, refreshed_periodogram: bool) -> None:
         self._finish_thread()
-        self.recalc_button.setEnabled(True)
-        self._progress_changed(100, "Fit ready")
+        self._set_calculation_controls_enabled(True)
+        self._current_fit = fit
+        ready_message = "Frequencies refined" if getattr(fit, "used_native", False) else "Fit ready"
+        if refreshed_periodogram and periodogram is not None:
+            backend = "fwpeaks" if periodogram.used_native else "Python fallback"
+            ready_message = f"Fit + DFT ready ({backend})"
+        self._progress_changed(100, ready_message)
         self._refresh_frequency_views()
         self._plot_light_curve(fit.residuals)
-        self._plot_periodogram(periodogram)
-        self.prewhitening_panel.set_candidates(candidates)
-        if not candidates:
-            self.statusBar().showMessage("Fit ready" if fit.converged else "Fit finished with convergence warning")
+        self._sync_selected_frequency_after_fit()
+        if periodogram is not None:
+            self._plot_periodogram(periodogram)
+            status_message = f"{ready_message}: {len(periodogram.frequency)} points, {len(candidates)} candidates"
+            self.statusBar().showMessage(status_message)
+            selected = self._set_candidates_and_select(candidates)
+            if selected is None and periodogram.best_frequency:
+                self._select_frequency(periodogram.best_frequency, amplitude=float(np.max(periodogram.amplitude)), label="best peak")
+                selected = True
+            if selected is None:
+                self.statusBar().showMessage(status_message)
+            return
+
+        self.prewhitening_panel.set_candidates([])
+        self._refresh_markers()
+        suffix = "Previous DFT is stale; click Calculate DFT to refresh peak candidates."
+        if not fit.converged:
+            self.statusBar().showMessage(f"{ready_message} with convergence warning. {suffix}")
+        else:
+            self.statusBar().showMessage(f"{ready_message}. {suffix}")
 
     @QtCore.Slot(str)
     def _worker_failed(self, message: str) -> None:
         self._finish_thread()
-        self.recalc_button.setEnabled(True)
+        self._set_calculation_controls_enabled(True)
         self.progress_label.setText("Failed")
         self.dft_progress.setValue(0)
+        self.statusBar().showMessage("Calculation failed")
         QtWidgets.QMessageBox.critical(self, "Calculation failed", message)
+
+    def _set_calculation_controls_enabled(self, enabled: bool) -> None:
+        self.recalc_button.setEnabled(enabled)
+        self.prewhitening_panel.fit_button.setEnabled(enabled)
+        self.prewhitening_panel.refine_button.setEnabled(enabled)
 
     @QtCore.Slot(int, str)
     def _progress_changed(self, percent: int, message: str) -> None:
-        self.dft_progress.setValue(max(0, min(100, int(percent))))
-        self.progress_label.setText(message)
+        value = max(0, min(100, int(percent)))
+        self.dft_progress.setValue(value)
+        self.progress_label.setText(f"{message} ({value}%)")
 
     def _plot_light_curve(self, light_curve: LightCurve) -> None:
         self._current_light_curve_plot = light_curve
-        self.lc_plot.plot_points("lc", light_curve.time, light_curve.flux, size=3)
-        if self.phase_errors_check.isChecked():
+        self.lc_plot.plot_points("lc", light_curve.time, light_curve.flux, color="#1d4ed8", size=3, opacity=0.58)
+        if self.light_curve_errors_check.isChecked():
             self.lc_plot.plot_error_bars("lc_errors", light_curve.time, light_curve.flux, light_curve.error)
         else:
             self.lc_plot.clear_item("lc_errors")
         self.lc_plot.auto_range()
 
     def _plot_periodogram(self, periodogram) -> None:
-        self.dft_plot.plot_line("dft", periodogram.frequency, periodogram.amplitude)
-        self._refresh_markers()
+        self._current_periodogram_plot = periodogram
+        self.dft_plot.plot_line(
+            "dft",
+            periodogram.frequency,
+            periodogram.amplitude,
+            color="#2563eb",
+            width=1.5,
+            title="DFT",
+        )
+        self._refresh_dft_overlays(periodogram)
         self.dft_plot.auto_range()
+
+    def _refresh_dft_overlays(self, periodogram=None) -> None:
+        if periodogram is None:
+            periodogram = self._current_periodogram_plot
+        if periodogram is not None and self.dft_snr5_check.isChecked():
+            noise_level = getattr(periodogram, "noise_level", None)
+            if noise_level is not None and np.isfinite(noise_level) and noise_level > 0:
+                self.dft_plot.plot_hline(
+                    "dft_snr5",
+                    5.0 * float(noise_level),
+                    color="#b45309",
+                    width=1.4,
+                    style="dash",
+                    label="5 S/N",
+                )
+            else:
+                self.dft_plot.clear_item("dft_snr5")
+        else:
+            self.dft_plot.clear_item("dft_snr5")
+
+        if periodogram is not None and self.dft_peak_markers_check.isChecked():
+            peak_frequency = []
+            peak_amplitude = []
+            for peak in periodogram.peaks:
+                frequency = peak.get("frequency")
+                amplitude = peak.get("amplitude")
+                try:
+                    frequency = float(frequency)
+                    amplitude = float(amplitude)
+                except (TypeError, ValueError):
+                    continue
+                if np.isfinite(frequency) and np.isfinite(amplitude):
+                    peak_frequency.append(frequency)
+                    peak_amplitude.append(amplitude)
+            if peak_frequency:
+                self.dft_plot.plot_points(
+                    "dft_peaks",
+                    np.asarray(peak_frequency, dtype=float),
+                    np.asarray(peak_amplitude, dtype=float),
+                    color="#0f766e",
+                    size=4,
+                    opacity=0.82,
+                    pen_color="#064e3b",
+                )
+            else:
+                self.dft_plot.clear_item("dft_peaks")
+        else:
+            self.dft_plot.clear_item("dft_peaks")
+        self._refresh_markers()
+
+    def _sync_selected_frequency_after_fit(self) -> None:
+        if self.engine is None or self.selected_frequency is None:
+            return
+        if self.selected_coefficients is not None and len(self.selected_coefficients) == len(self.engine.model.bases):
+            frequency = self.engine.model.frequency_for_term(self.selected_coefficients)
+            self._select_frequency(
+                frequency,
+                label=self.engine.model.label_for_term(self.selected_coefficients),
+                status="accepted",
+                base_index=self._base_index_from_coefficients(self.selected_coefficients),
+                coefficients=self.selected_coefficients,
+            )
+            return
+        if self.selected_base_index is not None and self.selected_base_index < len(self.engine.model.bases):
+            frequency = self.engine.model.bases[self.selected_base_index]
+            self._select_frequency(
+                frequency,
+                label=f"f{self.selected_base_index + 1}",
+                status="accepted",
+                base_index=self.selected_base_index,
+                coefficients=self.engine.model.identity_term(self.selected_base_index),
+            )
+            return
+        self._phase_current_period()
 
     def _active_light_curve(self) -> LightCurve | None:
         if self.engine is None:
@@ -452,10 +972,17 @@ class MainWindow(QtWidgets.QMainWindow):
             shift_fraction=self._phase_shift_fraction(),
         )
 
-    def _draw_phase_plot(self, plot: PlotPane, folded: FoldedLightCurve) -> None:
+    def _draw_phase_plot(
+        self,
+        plot: PlotPane,
+        folded: FoldedLightCurve,
+        *,
+        show_fit: bool | None = None,
+        harmonics: tuple[int, ...] | None = None,
+    ) -> PhaseSeriesFit | None:
         show_raw = not self.hide_phase_check.isChecked()
         if show_raw:
-            plot.plot_points("phase", folded.phase, folded.flux, size=3)
+            plot.plot_points("phase", folded.phase, folded.flux, color="#1d4ed8", size=3, opacity=0.54)
             if self.phase_errors_check.isChecked():
                 plot.plot_error_bars("phase_errors", folded.phase, folded.flux, folded.error)
             else:
@@ -465,9 +992,78 @@ class MainWindow(QtWidgets.QMainWindow):
             plot.clear_item("phase_errors")
         if self.smooth_check.isChecked():
             smoothed = boxcar_smooth(folded.flux, self.smooth_window_spin.value())
-            plot.plot_line("phase_smooth", folded.phase, smoothed, color="#16a34a")
+            plot.plot_line("phase_smooth", folded.phase, smoothed, color="#f97316", width=3.4)
         else:
             plot.clear_item("phase_smooth")
+        if show_fit is None:
+            show_fit = self.phase_fit_check.isChecked()
+        if harmonics is None:
+            harmonics = self._phase_fit_harmonics()
+        if show_fit:
+            fit = self._fourier_phase_fit(folded, harmonics)
+            if fit is not None:
+                plot.plot_line("phase_fit", fit.phase, fit.flux, color="#dc2626", width=2.8)
+                return fit
+            else:
+                plot.clear_item("phase_fit")
+        else:
+            plot.clear_item("phase_fit")
+        return None
+
+    def _fourier_phase_fit(self, folded: FoldedLightCurve, harmonics: tuple[int, ...]) -> PhaseSeriesFit | None:
+        fit = self._current_fit
+        if fit is None or not getattr(fit, "fourier_terms", ()):
+            return None
+        phase_frequency = self.phase_frequency_spin.value()
+        if phase_frequency <= 0:
+            return None
+        unique_harmonics = tuple(sorted({int(value) for value in harmonics if int(value) > 0}))
+        if not unique_harmonics:
+            return None
+        harmonic_index = {harmonic: index for index, harmonic in enumerate(unique_harmonics)}
+        include_offset = self.phase_source_combo.currentData() == "original"
+        coefficients = np.zeros(1 + 2 * len(unique_harmonics), dtype=float)
+        if include_offset:
+            coefficients[0] = float(getattr(fit, "offset", 0.0))
+        matched = False
+        tolerance = max(1e-8, abs(phase_frequency) * 1e-5)
+        for term in fit.fourier_terms:
+            frequency = float(term.frequency)
+            if frequency <= 0:
+                continue
+            ratio = frequency / phase_frequency
+            harmonic = int(round(ratio))
+            if harmonic not in harmonic_index:
+                continue
+            if abs(frequency - harmonic * phase_frequency) > max(tolerance, abs(frequency) * 1e-5):
+                continue
+            target = harmonic_index[harmonic]
+            coefficients[1 + 2 * target] += float(term.sin_coefficient)
+            coefficients[2 + 2 * target] += float(term.cos_coefficient)
+            matched = True
+        if not matched:
+            return None
+        max_phase = float(np.max(folded.phase)) if folded.phase.size else 1.0
+        repeats = max(1, int(np.floor(max_phase)) + 1)
+        grid = np.linspace(0.0, float(repeats), max(120, repeats * 400), endpoint=True)
+        fitted_flux = evaluate_sincos_series(grid, unique_harmonics, coefficients)
+        return PhaseSeriesFit(grid, fitted_flux, unique_harmonics, coefficients)
+
+    def _phase_fit_harmonics(self) -> tuple[int, ...]:
+        frequency = self.phase_frequency_spin.value()
+        if self.engine is None or frequency <= 0:
+            return (1,)
+        harmonics = {1}
+        tolerance = max(1e-8, abs(frequency) * 1e-5)
+        for term in self.engine.model.active_terms():
+            term_frequency = self.engine.model.frequency_for_term(term)
+            if term_frequency <= 0:
+                continue
+            ratio = term_frequency / frequency
+            harmonic = int(round(ratio))
+            if harmonic > 0 and abs(term_frequency - harmonic * frequency) <= max(tolerance, abs(term_frequency) * 1e-5):
+                harmonics.add(harmonic)
+        return tuple(sorted(harmonics))
 
     def _refresh_frequency_views(self) -> None:
         if self.engine is None:
@@ -481,11 +1077,68 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.engine is None:
             return
         self.dft_plot.clear_markers()
+        if self.dft_accepted_markers_check.isChecked():
+            for row in self.engine.model.rows():
+                if row["enabled"]:
+                    self.dft_plot.add_vertical_marker(row["frequency"], row["label"])
+        if self.dft_daily_aliases_check.isChecked():
+            self._add_alias_markers(DAILY_ALIAS_OFFSET, "1d", "#0891b2", "dash")
+        if self.dft_yearly_aliases_check.isChecked():
+            self._add_alias_markers(YEARLY_ALIAS_OFFSET, "1y", "#7c3aed", "dot")
+        if self.selected_frequency is not None:
+            label = self.selected_marker_label or frequency_text(self.selected_frequency)
+            self.dft_plot.set_selected_marker(self.selected_frequency, label)
+
+    def _add_alias_markers(self, offset: float, label_suffix: str, color: str, style: str) -> None:
+        low, high = self._dft_frequency_bounds()
+        drawn: list[float] = []
+        for source_frequency, source_label in self._alias_marker_sources():
+            for sign, sign_label in ((-1.0, "-"), (1.0, "+")):
+                alias_frequency = source_frequency + sign * offset
+                if alias_frequency <= 0 or alias_frequency < low or alias_frequency > high:
+                    continue
+                tolerance = max(1e-8, abs(alias_frequency) * 1e-6)
+                if any(abs(alias_frequency - existing) <= tolerance for existing in drawn):
+                    continue
+                drawn.append(alias_frequency)
+                label = f"{source_label} {sign_label}{label_suffix}" if source_label else f"{sign_label}{label_suffix}"
+                self.dft_plot.add_vertical_marker(
+                    alias_frequency,
+                    label,
+                    color=color,
+                    width=1.35,
+                    opacity=0.78,
+                    style=style,
+                )
+
+    def _dft_frequency_bounds(self) -> tuple[float, float]:
+        periodogram = self._current_periodogram_plot
+        if periodogram is not None and len(periodogram.frequency) > 0:
+            frequency = np.asarray(periodogram.frequency, dtype=float)
+            finite = frequency[np.isfinite(frequency)]
+            if finite.size:
+                return float(np.min(finite)), float(np.max(finite))
+        return float(min(self.start_spin.value(), self.end_spin.value())), float(max(self.start_spin.value(), self.end_spin.value()))
+
+    def _alias_marker_sources(self) -> list[tuple[float, str]]:
+        if self.engine is None:
+            return []
+        sources: list[tuple[float, str]] = []
         for row in self.engine.model.rows():
             if row["enabled"]:
-                self.dft_plot.add_vertical_marker(row["frequency"], row["label"])
+                self._append_alias_source(sources, float(row["frequency"]), str(row["label"]))
         if self.selected_frequency is not None:
-            self.dft_plot.set_selected_marker(self.selected_frequency, frequency_text(self.selected_frequency))
+            self._append_alias_source(sources, self.selected_frequency, "selected")
+        return sources
+
+    @staticmethod
+    def _append_alias_source(sources: list[tuple[float, str]], frequency: float, label: str) -> None:
+        if not np.isfinite(frequency) or frequency <= 0:
+            return
+        tolerance = max(1e-8, abs(frequency) * 1e-6)
+        if any(abs(frequency - existing) <= tolerance for existing, _ in sources):
+            return
+        sources.append((float(frequency), label))
 
     def _refresh_petersen(self) -> None:
         if self.engine is None:
@@ -498,7 +1151,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     continue
                 p1, p2 = 1.0 / first, 1.0 / second
                 longer, shorter = max(p1, p2), min(p1, p2)
-                lines.append(f"{sig_text(longer):>8s} {sig_text(shorter / longer):>8s} f{i + 1}/f{j + 1}")
+                lines.append(f"{fixed_text(longer):>8s} {fixed_text(shorter / longer):>8s} f{i + 1}/f{j + 1}")
         self.petersen_text.setPlainText("\n".join(lines))
 
     @QtCore.Slot(float)
@@ -507,19 +1160,31 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         pg = self.engine.last_periodogram
         idx = int(np.argmin(np.abs(pg.frequency - frequency)))
-        candidate = classify_peak(pg.frequency[idx], pg.amplitude[idx], self.engine.model, self.engine.light_curve.baseline)
-        self.prewhitening_panel.set_candidates([candidate, *self.engine.last_candidates[:20]])
-        self._select_frequency(
-            candidate.frequency,
-            amplitude=candidate.amplitude,
-            label=candidate.label,
-            status=f"{candidate.kind}, {candidate.resolved}",
-            snr=candidate.snr,
-            rayleigh=candidate.rayleigh,
+        candidate = classify_peak(
+            pg.frequency[idx],
+            pg.amplitude[idx],
+            self.engine.model,
+            self.engine.light_curve.baseline,
+            start_frequency=float(np.min(pg.frequency)),
+            end_frequency=float(np.max(pg.frequency)),
         )
+        self._set_candidates_and_select([candidate, *self.engine.last_candidates[:20]], selected_candidate=candidate)
         self.statusBar().showMessage(f"{frequency_text(candidate.frequency)}: {candidate.kind}, {candidate.resolved}")
 
     def _candidate_selected(self, candidate: FrequencyCandidate) -> None:
+        self._select_candidate(candidate)
+
+    def _set_candidates_and_select(
+        self,
+        candidates: list[FrequencyCandidate],
+        selected_candidate: FrequencyCandidate | None = None,
+    ) -> FrequencyCandidate | None:
+        selected = self.prewhitening_panel.set_candidates(candidates, selected_candidate=selected_candidate)
+        if selected is not None:
+            self._select_candidate(selected)
+        return selected
+
+    def _select_candidate(self, candidate: FrequencyCandidate) -> None:
         self._select_frequency(
             candidate.frequency,
             amplitude=candidate.amplitude,
@@ -535,11 +1200,12 @@ class MainWindow(QtWidgets.QMainWindow):
             label=row["label"],
             status=row["kind"],
             base_index=self._base_index_from_coefficients(row["coefficients"]),
+            coefficients=row["coefficients"],
         )
 
     def _base_index_from_coefficients(self, coefficients: tuple[int, ...]) -> int | None:
         nonzero = [(idx, value) for idx, value in enumerate(coefficients) if value]
-        if len(nonzero) == 1:
+        if len(nonzero) == 1 and nonzero[0][1] == 1:
             return nonzero[0][0]
         return None
 
@@ -563,13 +1229,19 @@ class MainWindow(QtWidgets.QMainWindow):
         snr: float | None = None,
         rayleigh: float | None = None,
         base_index: int | None = None,
+        coefficients: tuple[int, ...] | None = None,
     ) -> None:
         if frequency <= 0:
             return
         self.selected_frequency = float(frequency)
         self.selected_base_index = base_index if base_index is not None else self._base_index_for_frequency(frequency)
         self.selected_amplitude = amplitude
-        self.dft_plot.set_selected_marker(self.selected_frequency, label or frequency_text(self.selected_frequency))
+        self.selected_marker_label = label or frequency_text(self.selected_frequency)
+        self.selected_coefficients = coefficients
+        if self.engine is not None:
+            self._refresh_markers()
+        else:
+            self.dft_plot.set_selected_marker(self.selected_frequency, self.selected_marker_label)
         self._set_phase_values(period=1.0 / self.selected_frequency)
         self._update_selection_status(status=status, label=label, snr=snr, rayleigh=rayleigh)
         self._phase_current_period()
@@ -588,20 +1260,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage("No frequency selected")
             return
         period = 1.0 / self.selected_frequency
-        amp = "" if self.selected_amplitude is None else f"\nAmplitude: {self.selected_amplitude:.5f}"
-        amp_status = "" if self.selected_amplitude is None else f", amp {self.selected_amplitude:.5f}"
-        snr_text = "" if snr is None else f"\nS/N: {snr:.2f}"
-        rayleigh_text = "" if rayleigh is None else f"\nRayleigh: {sig_text(rayleigh)}"
+        amp = "" if self.selected_amplitude is None else f"\nAmplitude: {fixed_text(self.selected_amplitude)}"
+        amp_status = "" if self.selected_amplitude is None else f", amp {fixed_text(self.selected_amplitude)}"
+        snr_text = "" if snr is None else f"\nS/N: {fixed_text(snr)}"
+        rayleigh_text = "" if rayleigh is None else f"\nRayleigh: {fixed_text(rayleigh)}"
         detail = f", {label}" if label else ""
         extra = f", {status}" if status else ""
         self.selection_label.setText(
             f"f = {frequency_text(self.selected_frequency)} 1/d\n"
-            f"P = {sig_text(period)} d"
+            f"P = {fixed_text(period)} d"
             f"{amp}{snr_text}{rayleigh_text}\n"
             f"Status: {(status or 'selected')}{detail}"
         )
         self.statusBar().showMessage(
-            f"Selected f={frequency_text(self.selected_frequency)}  P={sig_text(period)} d{amp_status}{detail}{extra}"
+            f"Selected f={frequency_text(self.selected_frequency)}  P={fixed_text(period)} d{amp_status}{detail}{extra}"
         )
 
     def _set_phase_values(self, *, period: float | None = None, frequency: float | None = None) -> None:
@@ -617,6 +1289,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._syncing_phase_controls = False
         self._pending_phase_text["period"] = None
         self._pending_phase_text["frequency"] = None
+        self._sync_frequency_phase_controls_from_main()
 
     def _phase_period_changed(self, period: float) -> None:
         if self._syncing_phase_controls or period <= 0:
@@ -687,9 +1360,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._phase_current_period()
 
     def _phase_current_period(self) -> None:
+        self._sync_frequency_phase_controls_from_main()
         self._plot_phase(self.phase_period_spin.value())
-        if self._current_light_curve_plot is not None:
-            self._plot_light_curve(self._current_light_curve_plot)
         if self.selected_frequency is not None:
             self._update_frequency_preview(self.selected_frequency)
 
@@ -716,39 +1388,129 @@ class MainWindow(QtWidgets.QMainWindow):
                 base_index=item.get("base_index"),
             )
 
+    def _frequency_view_options_changed(self) -> None:
+        frequency = self.selected_frequency
+        if frequency is None:
+            item = self.frequency_view_combo.currentData()
+            if isinstance(item, dict) and item.get("frequency"):
+                frequency = float(item["frequency"])
+        if frequency is not None:
+            self._update_frequency_preview(frequency)
+
     def _update_frequency_preview(self, frequency: float) -> None:
         lc = self._active_light_curve()
         if lc is None or frequency <= 0:
             return
         period = self.phase_period_spin.value() or (1.0 / frequency)
         folded = self._fold_active_light_curve(lc, period)
-        self.frequency_lc_plot.plot_points("lc", lc.time, lc.flux, size=3)
+        self.frequency_lc_plot.plot_points("lc", lc.time, lc.flux, color="#1d4ed8", size=3, opacity=0.58)
         if self.phase_errors_check.isChecked():
             self.frequency_lc_plot.plot_error_bars("lc_errors", lc.time, lc.flux, lc.error)
         else:
             self.frequency_lc_plot.clear_item("lc_errors")
+        harmonics = self._phase_fit_harmonics()
+        fit = self._draw_phase_plot(
+            self.frequency_phase_plot,
+            folded,
+            show_fit=self.frequency_fit_check.isChecked(),
+            harmonics=harmonics,
+        )
+        self._draw_time_fit(lc, period, fit)
         self.frequency_lc_plot.auto_range()
-        self._draw_phase_plot(self.frequency_phase_plot, folded)
         self.frequency_phase_plot.auto_range()
+
+    def _draw_time_fit(self, light_curve: LightCurve, period: float, fit: PhaseSeriesFit | None) -> None:
+        if fit is None or period <= 0:
+            self.frequency_lc_plot.clear_item("lc_fit")
+            return
+        phase = np.mod(light_curve.time / period + self._phase_shift_fraction(), 1.0)
+        fit_flux = evaluate_sincos_series(phase, fit.harmonics, fit.coefficients)
+        valid = np.isfinite(light_curve.time) & np.isfinite(fit_flux)
+        if not np.any(valid):
+            self.frequency_lc_plot.clear_item("lc_fit")
+            return
+        time = np.asarray(light_curve.time, dtype=float)[valid]
+        flux = np.asarray(fit_flux, dtype=float)[valid]
+        order = np.argsort(time)
+        self.frequency_lc_plot.plot_line("lc_fit", time[order], flux[order], color="#dc2626", width=2.5)
 
     def _add_independent(self, frequency: float) -> None:
         if self.engine is None:
             return
         self.engine.add_independent(frequency)
         self._refresh_frequency_views()
-        self.start_fit()
+        self.start_fit_and_dft()
 
     def _add_candidate(self, candidate) -> None:
         if self.engine is None:
             return
         self.engine.add_combination(candidate.coefficients)
         self._refresh_frequency_views()
-        self.start_fit()
+        self.start_fit_and_dft()
+
+    def _edit_base_frequency(self, base_index: int, frequency: float) -> None:
+        if self.engine is None:
+            return
+        if not np.isfinite(frequency) or frequency <= 0:
+            self.statusBar().showMessage("Base frequency must be positive")
+            return
+        previous_coefficients = self.selected_coefficients
+        selected_was_base = self.selected_base_index == base_index
+        self.engine.set_base_frequency(base_index, frequency)
+        self._refresh_frequency_views()
+        if previous_coefficients is not None and len(previous_coefficients) == len(self.engine.model.bases):
+            self._select_frequency(
+                self.engine.model.frequency_for_term(previous_coefficients),
+                label=self.engine.model.label_for_term(previous_coefficients),
+                status="accepted",
+                base_index=self._base_index_from_coefficients(previous_coefficients),
+                coefficients=previous_coefficients,
+            )
+        elif selected_was_base:
+            coefficients = self.engine.model.identity_term(base_index)
+            self._select_frequency(
+                frequency,
+                label=f"f{base_index + 1}",
+                status="accepted",
+                base_index=base_index,
+                coefficients=coefficients,
+            )
+        elif self.selected_frequency is not None:
+            self.selected_base_index = self._base_index_for_frequency(self.selected_frequency)
+            self._refresh_markers()
+        self.start_fit_and_dft()
 
     def _remove_term(self, index: int) -> None:
         if self.engine is None:
             return
-        self.engine.remove_term(index)
+        removed_frequency = None
+        removed_coefficients = None
+        removed_base_index = None
+        rows = self.engine.model.rows()
+        if 0 <= index < len(rows):
+            removed_frequency = float(rows[index]["frequency"])
+            removed_coefficients = rows[index]["coefficients"]
+            removed_base_index = self._base_index_from_coefficients(removed_coefficients)
+        self.engine.remove_term_or_base(index)
+        selection_removed = False
+        if removed_frequency is not None and self.selected_frequency is not None:
+            tolerance = max(1e-8, abs(removed_frequency) * 1e-6)
+            selection_removed = abs(self.selected_frequency - removed_frequency) <= tolerance
+        if removed_base_index is not None and self.selected_coefficients is not None:
+            if removed_base_index < len(self.selected_coefficients) and self.selected_coefficients[removed_base_index] != 0:
+                selection_removed = True
+        elif removed_coefficients is not None and self.selected_coefficients == removed_coefficients:
+            selection_removed = True
+        if selection_removed:
+            self.selected_frequency = None
+            self.selected_base_index = None
+            self.selected_amplitude = None
+            self.selected_marker_label = ""
+            self.selected_coefficients = None
+            self.selection_label.setText("No frequency selected")
+            self.dft_plot.clear_selected_marker()
+        elif self.selected_frequency is not None:
+            self.selected_base_index = self._base_index_for_frequency(self.selected_frequency)
         self._refresh_frequency_views()
         self.start_fit()
 
@@ -766,6 +1528,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_frequency = None
         self.selected_base_index = None
         self.selected_amplitude = None
+        self.selected_marker_label = ""
+        self.selected_coefficients = None
+        self._current_fit = None
         self.selection_label.setText("No frequency selected")
         self.dft_plot.clear_selected_marker()
         self.prewhitening_panel.set_candidates([])
@@ -799,7 +1564,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _detrend(self) -> None:
         if self.engine is None:
             return
-        dialog = DetrendDialog(self.engine.residuals or self.engine.light_curve, self)
+        dialog = DetrendDialog(self.engine.residuals or self.engine.light_curve, self, y_inverted=self.magnitude_axis_check.isChecked())
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted and dialog.result is not None:
             self.engine.light_curve = dialog.result.corrected
             self.engine.residuals = dialog.result.corrected
@@ -809,14 +1574,23 @@ class MainWindow(QtWidgets.QMainWindow):
     def _sigma_clip(self) -> None:
         if self.engine is None:
             return
-        result = sigma_clip_light_curve(self.engine.residuals or self.engine.light_curve, self.engine.state.settings.sigma)
-        if len(result.rejected.time):
-            answer = QtWidgets.QMessageBox.question(self, "Sigma clip", f"Remove {len(result.rejected.time)} rejected points?")
-            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
-                return
-        self.engine.light_curve = result.cleaned
-        self.engine.residuals = result.cleaned
-        self._plot_light_curve(result.cleaned)
+        light_curve = self.engine.residuals or self.engine.light_curve
+        result = sigma_clip_light_curve(light_curve, self.engine.state.settings.sigma)
+        if not len(result.rejected.time):
+            self.statusBar().showMessage("Sigma clip found no points to reject")
+            return
+        dialog = SigmaClipDialog(light_curve, result, self, y_inverted=self.magnitude_axis_check.isChecked())
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+        reject_mask = dialog.selected_reject_mask()
+        if not np.any(reject_mask):
+            self.statusBar().showMessage("Sigma clip canceled: no points selected for rejection")
+            return
+        cleaned = light_curve.masked(~reject_mask)
+        self.engine.light_curve = cleaned
+        self.engine.residuals = cleaned
+        self._plot_light_curve(cleaned)
+        self.statusBar().showMessage(f"Sigma clip removed {int(np.count_nonzero(reject_mask))} points")
         self.start_dft()
 
     def _run_tdfd(self, bins: int) -> None:

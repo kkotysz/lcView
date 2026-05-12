@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from PySide6 import QtCore
 
 from lcview.core.combinations import FrequencyCandidate
 from lcview.core.frequency_model import FrequencyModel
-from lcview.display import frequency_text, period_text_from_frequency, sig_text
+from lcview.display import fixed_text, frequency_text, period_text_from_frequency
 
 
 KIND_LABELS = {
@@ -46,8 +47,22 @@ def compact_status(status: str) -> str:
     return f"{base}{suffix}"
 
 
+def _is_checked_state(value) -> bool:
+    if value == QtCore.Qt.CheckState.Checked:
+        return True
+    try:
+        return QtCore.Qt.CheckState(value) == QtCore.Qt.CheckState.Checked
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(value) == QtCore.Qt.CheckState.Checked.value
+    except (TypeError, ValueError):
+        return False
+
+
 class FrequencyTableModel(QtCore.QAbstractTableModel):
     term_toggled = QtCore.Signal(int, bool)
+    base_frequency_edited = QtCore.Signal(int, float)
     headers = ["#", "On", "Kind", "Label", "Frequency", "Period", "Coefficients"]
 
     def __init__(self, model: FrequencyModel | None = None) -> None:
@@ -74,6 +89,10 @@ class FrequencyTableModel(QtCore.QAbstractTableModel):
             return QtCore.Qt.CheckState.Checked if row["enabled"] else QtCore.Qt.CheckState.Unchecked
         if role == QtCore.Qt.ToolTipRole and col == 2:
             return kind_tooltip(row["kind"], row["coefficients"])
+        if role == QtCore.Qt.ToolTipRole and col in (4, 5):
+            if self._editable_base_index(row) is not None:
+                return "Double-click to edit this base frequency/period."
+            return "Derived from base frequencies and coefficients."
         if role not in (QtCore.Qt.DisplayRole, QtCore.Qt.EditRole):
             return None
         if col == 0:
@@ -85,8 +104,13 @@ class FrequencyTableModel(QtCore.QAbstractTableModel):
         if col == 3:
             return row["label"]
         if col == 4:
+            if role == QtCore.Qt.EditRole:
+                return f"{row['frequency']:.12g}"
             return frequency_text(row["frequency"])
         if col == 5:
+            if role == QtCore.Qt.EditRole:
+                frequency = row["frequency"]
+                return "" if frequency == 0 else f"{1.0 / frequency:.12g}"
             return period_text(row["frequency"])
         if col == 6:
             return " ".join(str(v) for v in row["coefficients"])
@@ -94,28 +118,59 @@ class FrequencyTableModel(QtCore.QAbstractTableModel):
 
     def flags(self, index: QtCore.QModelIndex):
         flags = super().flags(index)
-        if index.isValid() and index.column() == 1:
-            flags |= QtCore.Qt.ItemFlag.ItemIsUserCheckable | QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
+        if index.isValid():
+            row = self.rows[index.row()]
+            if index.column() == 1:
+                flags |= QtCore.Qt.ItemFlag.ItemIsUserCheckable | QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
+            if index.column() in (4, 5) and self._editable_base_index(row) is not None:
+                flags |= QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
         return flags
 
     def setData(self, index: QtCore.QModelIndex, value, role=QtCore.Qt.EditRole) -> bool:
-        if not index.isValid() or index.column() != 1 or role != QtCore.Qt.CheckStateRole:
+        if not index.isValid():
             return False
-        enabled = value == QtCore.Qt.CheckState.Checked
         row = self.rows[index.row()]
-        row["enabled"] = enabled
-        self.dataChanged.emit(index, index, [QtCore.Qt.CheckStateRole, QtCore.Qt.DisplayRole])
-        self.term_toggled.emit(int(row["index"]), enabled)
-        return True
+        if index.column() == 1 and role == QtCore.Qt.CheckStateRole:
+            enabled = _is_checked_state(value)
+            row["enabled"] = enabled
+            self.dataChanged.emit(index, index, [QtCore.Qt.CheckStateRole, QtCore.Qt.DisplayRole])
+            self.term_toggled.emit(int(row["index"]), enabled)
+            return True
+        if index.column() in (4, 5) and role == QtCore.Qt.EditRole:
+            base_index = self._editable_base_index(row)
+            if base_index is None:
+                return False
+            number = self._parse_float(value)
+            if number is None or number <= 0:
+                return False
+            frequency = number if index.column() == 4 else 1.0 / number
+            self.base_frequency_edited.emit(base_index, float(frequency))
+            return True
+        return False
 
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role=QtCore.Qt.DisplayRole):
         if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Horizontal:
             return self.headers[section]
         return None
 
+    @staticmethod
+    def _editable_base_index(row: dict) -> int | None:
+        coefficients = row["coefficients"]
+        nonzero = [(index, value) for index, value in enumerate(coefficients) if value]
+        if len(nonzero) == 1 and nonzero[0][1] == 1:
+            return nonzero[0][0]
+        return None
+
+    @staticmethod
+    def _parse_float(value) -> float | None:
+        try:
+            return float(str(value).strip().replace(",", "."))
+        except (TypeError, ValueError):
+            return None
+
 
 class CandidateTableModel(QtCore.QAbstractTableModel):
-    headers = ["#", "Kind", "Label", "Frequency", "Period", "Amplitude", "S/N", "Delta", "Status"]
+    headers = ["#", "Kind", "Label", "Freq", "Period", "Amp", "S/N", "Delta", "Status"]
 
     def __init__(self, candidates: list[FrequencyCandidate] | None = None) -> None:
         super().__init__()
@@ -139,6 +194,26 @@ class CandidateTableModel(QtCore.QAbstractTableModel):
         col = index.column()
         if role == QtCore.Qt.ToolTipRole and col == 1:
             return kind_tooltip(candidate.kind, candidate.coefficients)
+        if role == QtCore.Qt.UserRole:
+            if col == 0:
+                return index.row() + 1
+            if col == 1:
+                return kind_code(candidate.kind, candidate.coefficients)
+            if col == 2:
+                return candidate.label
+            if col == 3:
+                return candidate.frequency
+            if col == 4:
+                return math.inf if candidate.frequency == 0 else 1.0 / candidate.frequency
+            if col == 5:
+                return candidate.amplitude
+            if col == 6:
+                return -math.inf if candidate.snr is None else candidate.snr
+            if col == 7:
+                return candidate.delta
+            if col == 8:
+                return compact_status(candidate.resolved)
+            return None
         if role not in (QtCore.Qt.DisplayRole, QtCore.Qt.EditRole):
             return None
         if col == 0:
@@ -152,11 +227,11 @@ class CandidateTableModel(QtCore.QAbstractTableModel):
         if col == 4:
             return period_text(candidate.frequency)
         if col == 5:
-            return f"{candidate.amplitude:.5f}"
+            return fixed_text(candidate.amplitude)
         if col == 6:
-            return "" if candidate.snr is None else f"{candidate.snr:.2f}"
+            return fixed_text(candidate.snr)
         if col == 7:
-            return sig_text(candidate.delta)
+            return fixed_text(candidate.delta)
         if col == 8:
             return compact_status(candidate.resolved)
         return None

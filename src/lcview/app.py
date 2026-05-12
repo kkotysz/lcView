@@ -13,13 +13,22 @@ from .display import frequency_text
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Interactive lcView GUI")
     parser.add_argument("file", nargs="?", help="optional light-curve file to open")
+    parser.add_argument("--dft-backend", choices=("fwpeaks", "python"), default=None, help="DFT backend override for this GUI session")
+    parser.add_argument(
+        "--python-dft",
+        action="store_const",
+        dest="dft_backend",
+        const="python",
+        default=argparse.SUPPRESS,
+        help="use the explicit slower Python DFT backend",
+    )
     args = parser.parse_args(argv)
 
     from PySide6 import QtWidgets
     from .ui.main_window import MainWindow
 
     app = QtWidgets.QApplication(sys.argv[:1])
-    window = MainWindow(args.file)
+    window = MainWindow(args.file, dft_backend=args.dft_backend)
     window.show()
     return app.exec()
 
@@ -30,6 +39,15 @@ def prewhiten_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--start", type=float, default=0.0)
     parser.add_argument("--end", type=float, default=80.0)
     parser.add_argument("--precision", type=float, default=10.0)
+    parser.add_argument("--dft-backend", choices=("fwpeaks", "python"), default="fwpeaks")
+    parser.add_argument(
+        "--python-dft",
+        action="store_const",
+        dest="dft_backend",
+        const="python",
+        default=argparse.SUPPRESS,
+        help="use the explicit slower Python DFT backend",
+    )
     parser.add_argument("--add", type=float, action="append", default=[], help="add independent frequency before fitting")
     parser.add_argument("--export", type=Path, default=None, help="directory for legacy freq/resid/ampl/periodogram output")
     args = parser.parse_args(argv)
@@ -38,6 +56,7 @@ def prewhiten_main(argv: list[str] | None = None) -> int:
     engine.state.settings.start_frequency = args.start
     engine.state.settings.end_frequency = args.end
     engine.state.settings.precision = args.precision
+    engine.state.settings.dft_backend = args.dft_backend
     for frequency in args.add:
         engine.add_independent(frequency)
     if args.add:

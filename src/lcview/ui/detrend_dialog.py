@@ -11,10 +11,11 @@ from .widgets import SignificantDoubleSpinBox
 
 
 class DetrendDialog(QtWidgets.QDialog):
-    def __init__(self, light_curve: LightCurve, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(self, light_curve: LightCurve, parent: QtWidgets.QWidget | None = None, *, y_inverted: bool = False) -> None:
         super().__init__(parent)
         self.setWindowTitle("Akima detrending")
         self.light_curve = light_curve
+        self.y_inverted = bool(y_inverted)
         self.result: DetrendResult | None = None
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -35,7 +36,8 @@ class DetrendDialog(QtWidgets.QDialog):
         layout.addLayout(controls)
 
         self.plot = PlotPane("Detrending preview")
-        self.plot.set_labels("Flux", "Time/phase")
+        self.plot.set_labels("Magnitude" if self.y_inverted else "Flux", "Time/phase")
+        self.plot.set_y_inverted(self.y_inverted)
         layout.addWidget(self.plot, 1)
 
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)

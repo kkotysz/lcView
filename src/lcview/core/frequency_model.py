@@ -91,6 +91,15 @@ class FrequencyModel:
         self.terms.append(self.identity_term(len(self.bases) - 1))
         return len(self.bases) - 1
 
+    def set_base_frequency(self, index: int, frequency: float) -> None:
+        if index < 0 or index >= len(self.bases):
+            raise IndexError(index)
+        frequency = float(frequency)
+        if not np.isfinite(frequency) or frequency <= 0:
+            raise ValueError("base frequency must be positive and finite")
+        self.bases[index] = frequency
+        self.ensure_identity_terms()
+
     def add_combination(self, coefficients: Iterable[int]) -> int:
         if not self.bases:
             raise ValueError("cannot add a combination without base frequencies")

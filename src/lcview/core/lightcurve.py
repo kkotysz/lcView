@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
+import csv
+import re
 import numpy as np
 import pandas as pd
 
@@ -51,18 +53,148 @@ class LightCurve:
         np.savetxt(path, self.to_array(), fmt="%16.8f %16.8f %12.6f")
 
 
-def read_light_curve(path: str | Path) -> LightCurve:
+@dataclass(frozen=True)
+class LightCurveTable:
+    path: Path
+    data: pd.DataFrame
+    column_names: list[str]
+    has_header: bool
+    delimiter_name: str
+
+    @property
+    def column_count(self) -> int:
+        return len(self.column_names)
+
+    def numeric_column_indexes(self) -> list[int]:
+        indexes = []
+        for index in range(self.column_count):
+            values = pd.to_numeric(self.data.iloc[:, index], errors="coerce")
+            if values.notna().any():
+                indexes.append(index)
+        return indexes
+
+
+COMMENT_PREFIXES = ("#", "%")
+
+
+def _is_number(text: str) -> bool:
+    try:
+        float(text)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _clean_line(line: str) -> str:
+    stripped = line.strip()
+    if stripped.startswith(COMMENT_PREFIXES):
+        return stripped[1:].strip()
+    return stripped
+
+
+def _delimiter_for_line(line: str) -> tuple[str | None, str]:
+    if "," in line:
+        return ",", "comma"
+    if "\t" in line:
+        return "\t", "tab"
+    if ";" in line:
+        return ";", "semicolon"
+    return None, "whitespace"
+
+
+def _split_line(line: str, delimiter: str | None) -> list[str]:
+    line = _clean_line(line)
+    if not line:
+        return []
+    if delimiter is None:
+        return [part for part in re.split(r"\s+", line) if part]
+    return [part.strip() for part in next(csv.reader([line], delimiter=delimiter))]
+
+
+def _find_table_start(lines: list[str]) -> tuple[int, list[str] | None, str | None, str]:
+    pending_header: tuple[int, list[str], str | None, str] | None = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        delimiter, delimiter_name = _delimiter_for_line(_clean_line(stripped))
+        tokens = _split_line(stripped, delimiter)
+        if not tokens:
+            continue
+        all_numeric = all(_is_number(token) for token in tokens)
+        if stripped.startswith(COMMENT_PREFIXES):
+            if not all_numeric and len(tokens) >= 2:
+                pending_header = (index, tokens, delimiter, delimiter_name)
+            continue
+        if all_numeric:
+            if pending_header is not None:
+                _, header_tokens, _, _ = pending_header
+                return index, header_tokens, delimiter, delimiter_name
+            return index, None, delimiter, delimiter_name
+        return index + 1, tokens, delimiter, delimiter_name
+    raise ValueError("No table data found")
+
+
+def read_light_curve_table(path: str | Path) -> LightCurveTable:
     path = Path(path)
-    df = pd.read_csv(path, delimiter=r"\s+", header=None, comment="#", usecols=[0, 1, 2])
-    df = df.apply(pd.to_numeric, errors="coerce").dropna()
-    if df.empty:
+    lines = path.read_text().splitlines()
+    data_start, header_tokens, delimiter, delimiter_name = _find_table_start(lines)
+    rows = []
+    for line in lines[data_start:]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(COMMENT_PREFIXES):
+            continue
+        tokens = _split_line(stripped, delimiter)
+        if tokens:
+            rows.append(tokens)
+    if not rows:
         raise ValueError(f"No numeric light-curve rows found in {path}")
-    return LightCurve(
-        time=df[0].to_numpy(dtype=float),
-        flux=df[1].to_numpy(dtype=float),
-        error=df[2].to_numpy(dtype=float),
+    width = max(len(row) for row in rows)
+    padded_rows = [row + [""] * (width - len(row)) for row in rows]
+    if header_tokens is None:
+        column_names = [f"col{index + 1}" for index in range(width)]
+    else:
+        column_names = [token or f"col{index + 1}" for index, token in enumerate(header_tokens[:width])]
+        if len(column_names) < width:
+            column_names.extend(f"col{index + 1}" for index in range(len(column_names), width))
+    return LightCurveTable(
         path=path,
+        data=pd.DataFrame(padded_rows, columns=column_names),
+        column_names=column_names,
+        has_header=header_tokens is not None,
+        delimiter_name=delimiter_name,
+    )
+
+
+def infer_light_curve_columns(table: LightCurveTable) -> tuple[int, int, int]:
+    numeric_indexes = table.numeric_column_indexes()
+    if len(numeric_indexes) < 3:
+        raise ValueError(f"Need at least three numeric columns in {table.path}")
+    return tuple(numeric_indexes[:3])
+
+
+def light_curve_from_table(table: LightCurveTable, columns: Sequence[int]) -> LightCurve:
+    if len(columns) != 3:
+        raise ValueError("expected exactly three columns: time, flux, error")
+    if len(set(int(column) for column in columns)) != 3:
+        raise ValueError("time, flux and error columns must be distinct")
+    if any(int(column) < 0 or int(column) >= table.column_count for column in columns):
+        raise ValueError("selected light-curve column is out of range")
+    selected = table.data.iloc[:, [int(column) for column in columns]].apply(pd.to_numeric, errors="coerce")
+    df = selected.dropna()
+    if df.empty:
+        raise ValueError(f"No numeric light-curve rows found in selected columns of {table.path}")
+    return LightCurve(
+        time=df.iloc[:, 0].to_numpy(dtype=float),
+        flux=df.iloc[:, 1].to_numpy(dtype=float),
+        error=df.iloc[:, 2].to_numpy(dtype=float),
+        path=table.path,
     ).sorted()
+
+
+def read_light_curve(path: str | Path, columns: Sequence[int] | None = None) -> LightCurve:
+    table = read_light_curve_table(path)
+    return light_curve_from_table(table, columns or infer_light_curve_columns(table))
 
 
 def from_array(data: np.ndarray, path: Path | None = None) -> LightCurve:

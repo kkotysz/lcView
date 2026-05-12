@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from itertools import combinations, product
 import math
 import numpy as np
@@ -24,6 +25,14 @@ class FrequencyCandidate:
     rayleigh: float
 
 
+@dataclass(frozen=True)
+class CombinationIndex:
+    coefficients: np.ndarray
+    frequencies: np.ndarray
+    complexities: np.ndarray
+    order: np.ndarray
+
+
 def rayleigh_resolution(baseline: float) -> float:
     if baseline <= 0:
         return math.inf
@@ -43,30 +52,126 @@ def resolution_status(frequency: float, model: FrequencyModel, baseline: float) 
     return "resolved", diff
 
 
-def _coefficient_space(nbase: int, max_harmonic: int, n_two: int, n_three: int, n_four: int) -> list[tuple[int, ...]]:
-    coeffs: list[tuple[int, ...]] = []
-    for idx in range(nbase):
-        for harmonic in range(2, max_harmonic + 1):
-            row = [0] * nbase
-            row[idx] = harmonic
-            coeffs.append(tuple(row))
-        row = [0] * nbase
-        row[idx] = 1
-        coeffs.append(tuple(row))
+def _normalised_bounds(start_frequency: float | None, end_frequency: float | None) -> tuple[float | None, float | None]:
+    start = None if start_frequency is None else float(start_frequency)
+    end = None if end_frequency is None else float(end_frequency)
+    if start is not None and not np.isfinite(start):
+        start = None
+    if end is not None and not np.isfinite(end):
+        end = None
+    if start is not None and end is not None and start > end:
+        start, end = end, start
+    return start, end
 
-    limits = {2: n_two, 3: n_three, 4: n_four}
-    for order in range(2, min(4, nbase) + 1):
-        limit = max(1, limits[order])
-        values = [value for value in range(-limit, limit + 1) if value != 0]
-        for indexes in combinations(range(nbase), order):
-            for multipliers in product(values, repeat=order):
+
+def _in_frequency_range(frequency: float, start_frequency: float | None, end_frequency: float | None) -> bool:
+    if not np.isfinite(frequency) or frequency <= 0:
+        return False
+    if start_frequency is not None and frequency < start_frequency:
+        return False
+    if end_frequency is not None and frequency > end_frequency:
+        return False
+    return True
+
+
+def _fast_coefficient_space(
+    bases: tuple[float, ...],
+    start_frequency: float | None,
+    end_frequency: float | None,
+    max_harmonic: int,
+    n_two: int,
+    include_three: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    nbase = len(bases)
+    coefficients: list[tuple[int, ...]] = []
+    frequencies: list[float] = []
+    seen: set[tuple[int, ...]] = set()
+    positive_indexes = [index for index, frequency in enumerate(bases) if np.isfinite(frequency) and frequency > 0]
+
+    def add(row: list[int], frequency: float) -> None:
+        if not _in_frequency_range(frequency, start_frequency, end_frequency):
+            return
+        coeffs = tuple(row)
+        if coeffs in seen:
+            return
+        seen.add(coeffs)
+        coefficients.append(coeffs)
+        frequencies.append(float(frequency))
+
+    for index in positive_indexes:
+        base_frequency = bases[index]
+        harmonic_limit = max(1, int(max_harmonic))
+        if end_frequency is not None:
+            harmonic_limit = min(harmonic_limit, int(math.floor(end_frequency / base_frequency)))
+        for harmonic in range(1, harmonic_limit + 1):
+            row = [0] * nbase
+            row[index] = harmonic
+            add(row, harmonic * base_frequency)
+
+    two_values = [value for value in range(-max(1, int(n_two)), max(1, int(n_two)) + 1) if value != 0]
+    for first, second in combinations(positive_indexes, 2):
+        first_frequency = bases[first]
+        second_frequency = bases[second]
+        for first_coeff in two_values:
+            partial = first_coeff * first_frequency
+            for second_coeff in two_values:
                 row = [0] * nbase
-                for index, multiplier in zip(indexes, multipliers):
+                row[first] = first_coeff
+                row[second] = second_coeff
+                add(row, partial + second_coeff * second_frequency)
+
+    if include_three:
+        for indexes in combinations(positive_indexes, 3):
+            base_values = [bases[index] for index in indexes]
+            for multipliers in product((-1, 1), repeat=3):
+                row = [0] * nbase
+                frequency = 0.0
+                for index, multiplier, base_frequency in zip(indexes, multipliers, base_values):
                     row[index] = multiplier
-                if sum(abs(v) for v in row) <= 1:
-                    continue
-                coeffs.append(tuple(row))
-    return coeffs
+                    frequency += multiplier * base_frequency
+                add(row, frequency)
+
+    if not coefficients:
+        return np.empty((0, nbase), dtype=np.int16), np.empty(0, dtype=float)
+    return np.asarray(coefficients, dtype=np.int16), np.asarray(frequencies, dtype=float)
+
+
+@lru_cache(maxsize=16)
+def _combination_index(
+    bases: tuple[float, ...],
+    start_frequency: float | None,
+    end_frequency: float | None,
+    max_harmonic: int,
+    n_two: int,
+    include_three: bool,
+) -> CombinationIndex:
+    if not bases:
+        empty_coefficients = np.empty((0, 0), dtype=np.int16)
+        empty = np.empty(0, dtype=float)
+        return CombinationIndex(empty_coefficients, empty, empty, np.empty(0, dtype=int))
+
+    start_frequency, end_frequency = _normalised_bounds(start_frequency, end_frequency)
+    coefficients, frequencies = _fast_coefficient_space(
+        bases,
+        start_frequency,
+        end_frequency,
+        max_harmonic,
+        n_two,
+        include_three,
+    )
+    if len(frequencies) == 0:
+        empty = np.empty(0, dtype=float)
+        return CombinationIndex(coefficients, empty, empty, np.empty(0, dtype=int))
+
+    abs_coefficients = np.abs(coefficients.astype(float))
+    base_weights = np.arange(1, len(bases) + 1, dtype=float) / 10.0
+    complexities = np.sum(abs_coefficients, axis=1) + abs_coefficients @ base_weights
+    return CombinationIndex(
+        coefficients=coefficients,
+        frequencies=frequencies,
+        complexities=complexities,
+        order=np.argsort(frequencies),
+    )
 
 
 def matching_combinations(
@@ -74,6 +179,8 @@ def matching_combinations(
     model: FrequencyModel,
     baseline: float,
     *,
+    start_frequency: float | None = None,
+    end_frequency: float | None = None,
     max_harmonic: int = 60,
     n_two: int = 15,
     n_three: int = 10,
@@ -83,39 +190,93 @@ def matching_combinations(
     if model.is_empty:
         return []
     resolution = rayleigh_resolution(baseline)
-    matches: list[tuple[tuple[int, ...], float, float]] = []
-    seen: set[tuple[int, ...]] = set()
-    for coeffs in _coefficient_space(len(model.bases), max_harmonic, n_two, n_three, n_four):
-        if coeffs in seen:
-            continue
-        seen.add(coeffs)
-        combo_freq = model.frequency_for_term(coeffs)
-        if combo_freq <= 0:
-            continue
-        delta = combo_freq - frequency
-        if abs(delta) <= resolution:
-            complexity = sum(abs(v) for v in coeffs) + sum(i * abs(v) for i, v in enumerate(coeffs, start=1)) / 10
-            score = complexity * math.exp(100 * abs(delta))
-            matches.append((coeffs, delta, score))
-    matches.sort(key=lambda item: (item[2], abs(item[1])))
-    return matches[:limit]
+    index = _combination_index(
+        tuple(float(value) for value in model.bases),
+        *_normalised_bounds(start_frequency, end_frequency),
+        max_harmonic,
+        n_two,
+        n_three > 0,
+    )
+    return _matching_combinations_from_index(float(frequency), resolution, index, limit=limit)
 
 
-def classify_peak(
+def _matching_combinations_from_index(
+    frequency: float,
+    resolution: float,
+    index: CombinationIndex,
+    *,
+    limit: int,
+) -> list[tuple[tuple[int, ...], float, float]]:
+    if len(index.frequencies) == 0:
+        return []
+
+    ordered_frequencies = index.frequencies[index.order]
+    start = int(np.searchsorted(ordered_frequencies, frequency - resolution, side="left"))
+    stop = int(np.searchsorted(ordered_frequencies, frequency + resolution, side="right"))
+    if start >= stop:
+        return []
+
+    candidate_indexes = index.order[start:stop]
+    deltas = index.frequencies[candidate_indexes] - frequency
+    scores = index.complexities[candidate_indexes] * np.exp(np.minimum(100.0 * np.abs(deltas), 700.0))
+    ranked = np.lexsort((np.abs(deltas), scores))[:limit]
+    return [
+        (
+            tuple(int(value) for value in index.coefficients[candidate_indexes[row]]),
+            float(deltas[row]),
+            float(scores[row]),
+        )
+        for row in ranked
+    ]
+
+
+def clear_combination_cache() -> None:
+    _combination_index.cache_clear()
+
+
+def combination_cache_info():
+    return _combination_index.cache_info()
+
+
+def _model_term_frequencies(model: FrequencyModel) -> np.ndarray:
+    if model.is_empty or not model.terms:
+        return np.empty(0, dtype=float)
+    frequencies = np.asarray([model.frequency_for_term(term) for term in model.terms], dtype=float)
+    return frequencies[np.isfinite(frequencies)]
+
+
+def _resolution_status_from_frequencies(frequency: float, frequencies: np.ndarray, resolution: float) -> tuple[str, float]:
+    if len(frequencies) == 0:
+        return "new", math.inf
+    diff = float(np.min(np.abs(frequencies - frequency)))
+    if diff < resolution:
+        return "not resolved", diff
+    if diff < 2 * resolution:
+        return "weakly resolved", diff
+    return "resolved", diff
+
+
+def _kind_for_coefficients(coefficients: tuple[int, ...]) -> str:
+    nonzero = [value for value in coefficients if value]
+    if len(nonzero) == 1 and abs(nonzero[0]) > 1:
+        return "harmonic"
+    return "combination"
+
+
+def _candidate_from_peak(
     frequency: float,
     amplitude: float,
+    snr: float | None,
     model: FrequencyModel,
-    baseline: float,
-    *,
-    snr: float | None = None,
+    resolution: float,
+    model_frequencies: np.ndarray,
+    combination_index: CombinationIndex,
 ) -> FrequencyCandidate:
-    resolution = rayleigh_resolution(baseline)
-    status, diff = resolution_status(frequency, model, baseline)
-    matches = matching_combinations(frequency, model, baseline, limit=1)
+    status, diff = _resolution_status_from_frequencies(frequency, model_frequencies, resolution)
+    matches = _matching_combinations_from_index(frequency, resolution, combination_index, limit=1)
     if matches:
         coeffs, delta, score = matches[0]
-        nonzero = sum(1 for value in coeffs if value)
-        kind = "harmonic" if nonzero == 1 and max(abs(v) for v in coeffs) > 1 else "combination"
+        kind = _kind_for_coefficients(coeffs)
         label = model.label_for_term(coeffs)
     else:
         coeffs = tuple([0] * len(model.bases))
@@ -139,16 +300,63 @@ def classify_peak(
     )
 
 
-def candidates_from_peaks(peaks: list[dict], model: FrequencyModel, baseline: float) -> list[FrequencyCandidate]:
+def classify_peak(
+    frequency: float,
+    amplitude: float,
+    model: FrequencyModel,
+    baseline: float,
+    *,
+    snr: float | None = None,
+    start_frequency: float | None = None,
+    end_frequency: float | None = None,
+) -> FrequencyCandidate:
+    resolution = rayleigh_resolution(baseline)
+    combination_index = _combination_index(
+        tuple(float(value) for value in model.bases),
+        *_normalised_bounds(start_frequency, end_frequency),
+        60,
+        15,
+        True,
+    )
+    return _candidate_from_peak(
+        frequency=float(frequency),
+        amplitude=float(amplitude),
+        snr=snr,
+        model=model,
+        resolution=resolution,
+        model_frequencies=_model_term_frequencies(model),
+        combination_index=combination_index,
+    )
+
+
+def candidates_from_peaks(
+    peaks: list[dict],
+    model: FrequencyModel,
+    baseline: float,
+    *,
+    start_frequency: float | None = None,
+    end_frequency: float | None = None,
+) -> list[FrequencyCandidate]:
+    resolution = rayleigh_resolution(baseline)
+    model_frequencies = _model_term_frequencies(model)
+    combination_index = _combination_index(
+        tuple(float(value) for value in model.bases),
+        *_normalised_bounds(start_frequency, end_frequency),
+        60,
+        15,
+        True,
+    )
     candidates: list[FrequencyCandidate] = []
     for peak in peaks:
         candidates.append(
-            classify_peak(
+            _candidate_from_peak(
                 frequency=float(peak["frequency"]),
                 amplitude=float(peak["amplitude"]),
                 snr=peak.get("snr"),
                 model=model,
-                baseline=baseline,
+                resolution=resolution,
+                model_frequencies=model_frequencies,
+                combination_index=combination_index,
             )
         )
     return candidates

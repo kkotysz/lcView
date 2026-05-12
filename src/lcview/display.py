@@ -17,8 +17,20 @@ def sig_text(value: float | None, digits: int = 2) -> str:
     return f"{number:.{digits}g}"
 
 
+def fixed_text(value: float | None, decimals: int = 3) -> str:
+    if value is None:
+        return ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(number):
+        return ""
+    return f"{number:.{decimals}f}"
+
+
 def frequency_text(frequency: float | None) -> str:
-    return sig_text(frequency, 2)
+    return fixed_text(frequency)
 
 
 def period_text_from_frequency(frequency: float | None) -> str:
@@ -30,4 +42,4 @@ def period_text_from_frequency(frequency: float | None) -> str:
         return ""
     if number <= 0 or not math.isfinite(number):
         return ""
-    return sig_text(1.0 / number, 2)
+    return fixed_text(1.0 / number)

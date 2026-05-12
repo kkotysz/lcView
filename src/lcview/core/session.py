@@ -14,6 +14,18 @@ class SessionSettings:
     start_frequency: float = 0.0
     end_frequency: float = 80.0
     precision: float = 10.0
+    dft_backend: str = "fwpeaks"
+    show_dft_snr5: bool = True
+    show_dft_accepted_markers: bool = True
+    show_dft_peak_markers: bool = True
+    show_dft_daily_aliases: bool = False
+    show_dft_yearly_aliases: bool = False
+    show_light_curve_errors: bool = False
+    invert_y_axis: bool = False
+    show_tdfd_legend: bool = True
+    time_column: int | None = None
+    flux_column: int | None = None
+    error_column: int | None = None
     points_in_bin: float = 20.0
     sigma: float = 3.5
     tdfd_bins: int = 20
@@ -31,6 +43,18 @@ class SessionSettings:
             "start_frequency": self.start_frequency,
             "end_frequency": self.end_frequency,
             "precision": self.precision,
+            "dft_backend": self.dft_backend,
+            "show_dft_snr5": self.show_dft_snr5,
+            "show_dft_accepted_markers": self.show_dft_accepted_markers,
+            "show_dft_peak_markers": self.show_dft_peak_markers,
+            "show_dft_daily_aliases": self.show_dft_daily_aliases,
+            "show_dft_yearly_aliases": self.show_dft_yearly_aliases,
+            "show_light_curve_errors": self.show_light_curve_errors,
+            "invert_y_axis": self.invert_y_axis,
+            "show_tdfd_legend": self.show_tdfd_legend,
+            "time_column": self.time_column,
+            "flux_column": self.flux_column,
+            "error_column": self.error_column,
             "points_in_bin": self.points_in_bin,
             "sigma": self.sigma,
             "tdfd_bins": self.tdfd_bins,

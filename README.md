@@ -92,11 +92,21 @@ PYTHONPATH=src pytest -q
 python -m compileall -q src
 ```
 
-To run lcView from any directory without activating the environment first, place a launcher somewhere in your `PATH`, for example:
+To run lcView from any directory without activating the environment first, place
+a launcher somewhere in your `PATH`. This uses the entry point installed inside
+the conda environment directly, so it is faster than wrapping `conda run`:
 
 ```bash
-printf '#!/usr/bin/env bash\nconda run --no-capture-output -n lcView-env /path/to/lcView/lcView.sh "$@"\n' > ~/bin/lcview
+mkdir -p ~/bin
+LCVIEW_BIN="$(conda run -n lcView-env which lcview | tail -n 1)"
+printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$LCVIEW_BIN" > ~/bin/lcview
 chmod +x ~/bin/lcview
+```
+
+Make sure `~/bin` is in your shell `PATH`, for example in `~/.zshrc`:
+
+```bash
+export PATH="$HOME/bin:$PATH"
 ```
 
 ## Troubleshooting

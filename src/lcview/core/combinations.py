@@ -283,7 +283,7 @@ def _candidate_from_peak(
         delta = diff if math.isfinite(diff) else 0.0
         score = 0.0
         kind = "independent"
-        label = "new independent"
+        label = "new"
     if frequency < 0.3:
         status = f"{status}; low frequency"
     return FrequencyCandidate(

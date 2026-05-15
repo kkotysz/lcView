@@ -8,6 +8,7 @@ from PySide6 import QtCore, QtWidgets
 
 from lcview.core.lightcurve import LightCurve
 from lcview.core.sigma_clip import SigmaClipResult
+from lcview.ui import sigma_clip_dialog as sigma_clip_dialog_module
 from lcview.ui.sigma_clip_dialog import SigmaClipDialog, SigmaRejectedTableModel
 
 
@@ -50,6 +51,39 @@ def test_sigma_clip_dialog_returns_cleaned_curve_from_selected_rejections():
     assert dialog.plot._y_inverted
     assert cleaned.time.tolist() == [0.0, 1.0, 2.0]
     assert dialog.selected_reject_mask().tolist() == [False, False, False, True]
+    dialog.close()
+
+
+def test_sigma_clip_dialog_recomputes_preview_and_records_apply_mode(monkeypatch):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    light_curve, result = _sample_result()
+
+    def fake_sigma_clip(light_curve_arg, sigma, maxiters):
+        assert light_curve_arg is light_curve
+        assert sigma == pytest.approx(2.0)
+        assert maxiters == 3
+        keep_mask = np.array([False, True, True, True])
+        return SigmaClipResult(
+            cleaned=light_curve.masked(keep_mask),
+            rejected=light_curve.masked(~keep_mask),
+            keep_mask=keep_mask,
+            sigma=sigma,
+        )
+
+    monkeypatch.setattr(sigma_clip_dialog_module, "sigma_clip_light_curve", fake_sigma_clip)
+    dialog = SigmaClipDialog(light_curve, result)
+    dialog.sigma_spin.setValue(2.0)
+    dialog.maxiters_spin.setValue(3)
+
+    dialog.recompute_clip()
+
+    assert dialog.selected_reject_mask().tolist() == [True, False, False, False]
+    assert dialog.table_model.rowCount() == 1
+
+    dialog._clip_and_continue()
+
+    assert dialog.result_mode == "continue"
+    assert dialog.result() == QtWidgets.QDialog.DialogCode.Accepted
     dialog.close()
 
 

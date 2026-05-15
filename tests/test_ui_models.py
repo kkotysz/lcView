@@ -6,14 +6,15 @@ from PySide6 import QtCore, QtWidgets
 
 from lcview.core.combinations import classify_peak
 from lcview.core.frequency_model import FrequencyModel
-from lcview.ui.models import CandidateTableModel, FrequencyTableModel, kind_code, period_text
+from lcview.core.results import FrequencyReport, FrequencyReportRow
+from lcview.ui.models import CandidateTableModel, FrequencyReportTableModel, FrequencyTableModel, kind_code, period_text
 from lcview.ui.prewhitening_panel import CANDIDATE_COLUMN_WIDTHS, PrewhiteningPanel
 
 
 def test_kind_codes_and_period_formatting():
-    assert kind_code("independent", (1, 0)) == "IND"
+    assert kind_code("independent", (1, 0)) == "I"
     assert kind_code("combination", (2, 0)) == "H"
-    assert kind_code("combination", (1, -1)) == "COM"
+    assert kind_code("combination", (1, -1)) == "C"
     assert period_text(2.0) == "0.500"
     assert period_text(0.0) == ""
 
@@ -24,7 +25,7 @@ def test_frequency_table_period_and_tooltip():
     table = FrequencyTableModel(model)
     assert table.data(table.index(0, 4), QtCore.Qt.DisplayRole) == "2.000"
     assert table.data(table.index(0, 5), QtCore.Qt.DisplayRole) == "0.500"
-    assert table.data(table.index(0, 2), QtCore.Qt.DisplayRole) == "IND"
+    assert table.data(table.index(0, 2), QtCore.Qt.DisplayRole) == "I"
     assert "independent" in table.data(table.index(0, 2), QtCore.Qt.ToolTipRole)
     assert table.data(table.index(0, 1), QtCore.Qt.CheckStateRole) == QtCore.Qt.CheckState.Checked
 
@@ -65,10 +66,46 @@ def test_candidate_table_short_kind_and_low_status():
     model.add_independent(1.0)
     candidate = classify_peak(0.2, 1.0, model, baseline=100.0)
     table = CandidateTableModel([candidate])
-    assert table.data(table.index(0, 1), QtCore.Qt.DisplayRole) == "IND"
+    assert table.data(table.index(0, 1), QtCore.Qt.DisplayRole) == "I"
     assert table.data(table.index(0, 4), QtCore.Qt.DisplayRole) == "5.000"
     assert table.data(table.index(0, 5), QtCore.Qt.DisplayRole) == "1.000"
     assert "LOW" in table.data(table.index(0, 8), QtCore.Qt.DisplayRole)
+
+
+def test_frequency_report_table_formats_values_and_stale_status():
+    report = FrequencyReport(
+        rows=(
+            FrequencyReportRow(
+                index=0,
+                enabled=True,
+                kind="independent",
+                label="f1",
+                coefficients=(1,),
+                frequency=2.0,
+                frequency_error=0.01,
+                period=0.5,
+                period_error=0.0025,
+                amplitude=1.2345,
+                amplitude_error=0.02,
+                phase_cycles=0.125,
+                phase_error_cycles=0.003,
+                status="fit",
+            ),
+        ),
+        nobs=10,
+        n_terms=1,
+        n_active_terms=1,
+        sdev=0.1,
+        fit_source="test",
+        stale=True,
+    )
+    table = FrequencyReportTableModel(report)
+
+    assert table.data(table.index(0, 2), QtCore.Qt.DisplayRole) == "I"
+    assert table.data(table.index(0, 5), QtCore.Qt.DisplayRole) == "2.000"
+    assert table.data(table.index(0, 9), QtCore.Qt.DisplayRole) == "1.234"
+    assert table.data(table.index(0, 13), QtCore.Qt.DisplayRole) == "stale"
+    assert "Frequency" in table.tsv_text()
 
 
 def test_prewhitening_panel_defaults_candidates_to_amplitude_sort():
@@ -104,6 +141,31 @@ def test_prewhitening_panel_preserves_requested_candidate_after_sort():
 
     assert selected == candidates[2]
     assert panel.selected_candidate() == candidates[2]
+    panel.close()
+
+
+def test_prewhitening_panel_emits_multiple_selected_candidates():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    model = FrequencyModel.empty()
+    candidates = [
+        classify_peak(1.0, 0.2, model, baseline=100.0),
+        classify_peak(2.0, 1.5, model, baseline=100.0),
+        classify_peak(3.0, 0.7, model, baseline=100.0),
+    ]
+    panel = PrewhiteningPanel()
+    panel.set_candidates(candidates)
+    selection = panel.candidate_table.selectionModel()
+    selection.clearSelection()
+    for row in (0, 1):
+        index = panel.candidate_table.model().index(row, 0)
+        selection.select(index, QtCore.QItemSelectionModel.SelectionFlag.Select | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+    calls = []
+    panel.add_candidates_requested.connect(lambda selected: calls.append(selected))
+
+    panel.add_candidate_button.click()
+
+    assert panel.selected_candidates() == [candidates[1], candidates[2]]
+    assert calls == [[candidates[1], candidates[2]]]
     panel.close()
 
 

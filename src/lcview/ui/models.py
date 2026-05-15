@@ -7,13 +7,18 @@ from PySide6 import QtCore
 
 from lcview.core.combinations import FrequencyCandidate
 from lcview.core.frequency_model import FrequencyModel
+from lcview.core.results import FrequencyReport, FrequencyReportRow
 from lcview.display import fixed_text, frequency_text, period_text_from_frequency
 
 
+COEFFICIENTS_ROLE = QtCore.Qt.ItemDataRole.UserRole + 100
+TERM_INDEX_ROLE = QtCore.Qt.ItemDataRole.UserRole + 101
+
+
 KIND_LABELS = {
-    "independent": ("IND", "independent frequency"),
+    "independent": ("I", "independent frequency"),
     "harmonic": ("H", "harmonic"),
-    "combination": ("COM", "combination frequency"),
+    "combination": ("C", "combination frequency"),
 }
 
 
@@ -240,3 +245,165 @@ class CandidateTableModel(QtCore.QAbstractTableModel):
         if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Horizontal:
             return self.headers[section]
         return None
+
+
+class FrequencyReportTableModel(QtCore.QAbstractTableModel):
+    headers = [
+        "#",
+        "On",
+        "Kind",
+        "Label",
+        "Coefficients",
+        "Frequency",
+        "Freq err",
+        "Period",
+        "Period err",
+        "Amp",
+        "Amp err",
+        "Phase",
+        "Phase err",
+        "Status",
+    ]
+
+    def __init__(self, report: FrequencyReport | None = None) -> None:
+        super().__init__()
+        self.report = report
+        self.rows = list(report.rows) if report else []
+
+    def set_report(self, report: FrequencyReport | None) -> None:
+        self.beginResetModel()
+        self.report = report
+        self.rows = list(report.rows) if report else []
+        self.endResetModel()
+
+    def rowCount(self, parent=QtCore.QModelIndex()) -> int:
+        return len(self.rows)
+
+    def columnCount(self, parent=QtCore.QModelIndex()) -> int:
+        return len(self.headers)
+
+    def data(self, index: QtCore.QModelIndex, role=QtCore.Qt.DisplayRole):
+        if not index.isValid():
+            return None
+        row = self.rows[index.row()]
+        col = index.column()
+        if role == QtCore.Qt.CheckStateRole and col == 1:
+            return QtCore.Qt.CheckState.Checked if row.enabled else QtCore.Qt.CheckState.Unchecked
+        if role == COEFFICIENTS_ROLE:
+            return row.coefficients
+        if role == TERM_INDEX_ROLE:
+            return row.index
+        if role == QtCore.Qt.ToolTipRole and col == 2:
+            return kind_tooltip(row.kind, row.coefficients)
+        if role == QtCore.Qt.ItemDataRole.UserRole:
+            return self._sort_value(row, col)
+        if role not in (QtCore.Qt.DisplayRole, QtCore.Qt.EditRole):
+            return None
+        return self._display_value(row, col)
+
+    def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role=QtCore.Qt.DisplayRole):
+        if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Horizontal:
+            return self.headers[section]
+        return None
+
+    def row_at(self, row: int) -> FrequencyReportRow | None:
+        if row < 0 or row >= len(self.rows):
+            return None
+        return self.rows[row]
+
+    def tsv_text(self) -> str:
+        lines = ["\t".join(self.headers)]
+        for row in self.rows:
+            lines.append("\t".join(self._display_value(row, col) for col in range(len(self.headers))))
+        return "\n".join(lines)
+
+    def raw_rows(self) -> list[list[str]]:
+        result = [self.headers]
+        for row in self.rows:
+            result.append([self._raw_value(row, col) for col in range(len(self.headers))])
+        return result
+
+    def _display_value(self, row: FrequencyReportRow, col: int) -> str:
+        if col == 0:
+            return str(row.index + 1)
+        if col == 1:
+            return ""
+        if col == 2:
+            return kind_code(row.kind, row.coefficients)
+        if col == 3:
+            return row.label
+        if col == 4:
+            return " ".join(str(value) for value in row.coefficients)
+        if col == 5:
+            return frequency_text(row.frequency)
+        if col == 6:
+            return fixed_text(row.frequency_error)
+        if col == 7:
+            return fixed_text(row.period)
+        if col == 8:
+            return fixed_text(row.period_error)
+        if col == 9:
+            return fixed_text(row.amplitude)
+        if col == 10:
+            return fixed_text(row.amplitude_error)
+        if col == 11:
+            return fixed_text(row.phase_cycles)
+        if col == 12:
+            return fixed_text(row.phase_error_cycles)
+        if col == 13:
+            if self.report is not None and self.report.stale and row.enabled:
+                return "stale"
+            return row.status
+        return ""
+
+    def _raw_value(self, row: FrequencyReportRow, col: int) -> str:
+        if col == 0:
+            return str(row.index + 1)
+        if col == 1:
+            return "1" if row.enabled else "0"
+        if col == 2:
+            return kind_code(row.kind, row.coefficients)
+        if col == 3:
+            return row.label
+        if col == 4:
+            return " ".join(str(value) for value in row.coefficients)
+        value = {
+            5: row.frequency,
+            6: row.frequency_error,
+            7: row.period,
+            8: row.period_error,
+            9: row.amplitude,
+            10: row.amplitude_error,
+            11: row.phase_cycles,
+            12: row.phase_error_cycles,
+        }.get(col)
+        if value is not None:
+            return f"{float(value):.12g}"
+        if col == 13:
+            return self._display_value(row, col)
+        return ""
+
+    def _sort_value(self, row: FrequencyReportRow, col: int):
+        if col == 0:
+            return row.index + 1
+        if col == 1:
+            return 1 if row.enabled else 0
+        if col == 2:
+            return kind_code(row.kind, row.coefficients)
+        if col == 3:
+            return row.label
+        if col == 4:
+            return " ".join(str(value) for value in row.coefficients)
+        numeric = {
+            5: row.frequency,
+            6: row.frequency_error,
+            7: row.period,
+            8: row.period_error,
+            9: row.amplitude,
+            10: row.amplitude_error,
+            11: row.phase_cycles,
+            12: row.phase_error_cycles,
+        }.get(col)
+        if numeric is None:
+            return self._display_value(row, col)
+        return -math.inf if numeric is None else float(numeric)

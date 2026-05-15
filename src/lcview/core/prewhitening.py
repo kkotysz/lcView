@@ -13,7 +13,9 @@ from .combinations import FrequencyCandidate, candidates_from_peaks
 from .frequency_model import FrequencyHistory, FrequencyModel
 from .lightcurve import LightCurve, read_light_curve, from_array
 from .periodogram import PeriodogramResult, compute_periodogram
+from .results import FrequencyReport, build_frequency_report
 from .session import SessionState
+from .tdfd import TdfdResult
 
 
 @dataclass
@@ -36,6 +38,7 @@ class FitResult:
     used_native: bool = False
     offset: float = 0.0
     fourier_terms: tuple[FourierTerm, ...] = ()
+    report: FrequencyReport | None = None
 
 
 @dataclass
@@ -47,6 +50,12 @@ class PrewhiteningEngine:
     last_periodogram: PeriodogramResult | None = None
     last_candidates: list[FrequencyCandidate] = field(default_factory=list)
     residuals: LightCurve | None = None
+    last_report: FrequencyReport | None = None
+    tdfd_result: TdfdResult | None = None
+    tdfd_correction_active: bool = False
+    tdfd_correction_label: str = ""
+    tdfd_correction_stale_reason: str = ""
+    _pre_tdfd_residuals: LightCurve | None = None
 
     def __post_init__(self) -> None:
         settings = self.state.settings
@@ -89,6 +98,52 @@ class PrewhiteningEngine:
     def _invalidate_periodogram(self) -> None:
         self.last_periodogram = None
         self.last_candidates = []
+
+    def _mark_report_stale(self, reason: str = "stale until next fit") -> None:
+        if self.last_report is not None:
+            self.last_report.mark_stale(reason)
+
+    def _invalidate_tdfd_correction(self, reason: str) -> None:
+        if self.tdfd_correction_active:
+            self.residuals = self._pre_tdfd_residuals
+        self.tdfd_result = None
+        self.tdfd_correction_active = False
+        self.tdfd_correction_label = ""
+        self.tdfd_correction_stale_reason = reason
+        self._pre_tdfd_residuals = None
+
+    def apply_tdfd_correction(self, result: TdfdResult) -> LightCurve:
+        if result.corrected_residuals is None:
+            raise ValueError("TDFD result does not contain corrected residuals")
+        if not self.tdfd_correction_active:
+            self._pre_tdfd_residuals = self.residuals
+        self.tdfd_result = result
+        self.residuals = result.corrected_residuals
+        self.tdfd_correction_active = True
+        self.tdfd_correction_stale_reason = ""
+        label = "TDFD"
+        base_index = result.selected_base_index
+        if base_index is not None:
+            label = f"TDFD f{base_index + 1}"
+        self.tdfd_correction_label = label
+        self._invalidate_periodogram()
+        return self.residuals
+
+    def clear_tdfd_correction(self) -> bool:
+        if not self.tdfd_correction_active:
+            self.tdfd_result = None
+            self.tdfd_correction_label = ""
+            self.tdfd_correction_stale_reason = ""
+            self._pre_tdfd_residuals = None
+            return False
+        self.residuals = self._pre_tdfd_residuals
+        self.tdfd_result = None
+        self.tdfd_correction_active = False
+        self.tdfd_correction_label = ""
+        self.tdfd_correction_stale_reason = ""
+        self._pre_tdfd_residuals = None
+        self._invalidate_periodogram()
+        return True
 
     def _write_work_inputs(self, model: FrequencyModel | None = None) -> None:
         model = model or self.model
@@ -147,38 +202,48 @@ class PrewhiteningEngine:
         return self.last_candidates
 
     def add_independent(self, frequency: float) -> int:
+        self._invalidate_tdfd_correction("Accepted frequencies changed")
         self.history.snapshot()
         index = self.model.add_independent(frequency)
+        self._mark_report_stale()
         self._invalidate_periodogram()
         self.save_state()
         return index
 
     def add_combination(self, coefficients: tuple[int, ...]) -> int:
+        self._invalidate_tdfd_correction("Accepted frequencies changed")
         self.history.snapshot()
         index = self.model.add_combination(coefficients)
+        self._mark_report_stale()
         self._invalidate_periodogram()
         self.save_state()
         return index
 
     def set_base_frequency(self, index: int, frequency: float) -> None:
+        self._invalidate_tdfd_correction("Accepted frequencies changed")
         self.history.snapshot()
         self.model.set_base_frequency(index, frequency)
+        self._mark_report_stale()
         self._invalidate_periodogram()
         self.save_state()
 
     def remove_term(self, index: int) -> None:
+        self._invalidate_tdfd_correction("Accepted frequencies changed")
         self.history.snapshot()
         self.model.remove_term(index)
+        self._mark_report_stale()
         self._invalidate_periodogram()
         self.save_state()
 
     def remove_term_or_base(self, index: int) -> None:
+        self._invalidate_tdfd_correction("Accepted frequencies changed")
         self.history.snapshot()
         base_index = self._identity_base_index_for_term(index)
         if base_index is None:
             self.model.remove_term(index)
         else:
             self.model.remove_base(base_index)
+        self._mark_report_stale()
         self._invalidate_periodogram()
         self.save_state()
 
@@ -192,21 +257,46 @@ class PrewhiteningEngine:
         return None
 
     def clear_frequencies(self) -> None:
+        self._invalidate_tdfd_correction("Accepted frequencies changed")
         self.history.snapshot()
         self.model.clear()
         self.residuals = self.light_curve
+        self._mark_report_stale()
         self._invalidate_periodogram()
         self.save_state()
 
+    def apply_observation_mask(self, keep_mask: np.ndarray) -> None:
+        keep_mask = np.asarray(keep_mask, dtype=bool)
+        if keep_mask.shape != (len(self.light_curve.time),):
+            raise ValueError("observation mask must match the original light curve length")
+        if not np.any(keep_mask):
+            raise ValueError("observation mask would remove all points")
+        self.light_curve = self.light_curve.masked(keep_mask)
+        self.residuals = None
+        self.tdfd_result = None
+        self.tdfd_correction_active = False
+        self.tdfd_correction_label = ""
+        self.tdfd_correction_stale_reason = "Light curve mask changed"
+        self._pre_tdfd_residuals = None
+        self._mark_report_stale()
+        self._invalidate_periodogram()
+        self._reset_work_dir()
+        self._write_work_inputs()
+        self.save_state()
+
     def set_term_enabled(self, index: int, enabled: bool) -> None:
+        self._invalidate_tdfd_correction("Accepted frequencies changed")
         self.history.snapshot()
         self.model.set_term_enabled(index, enabled)
+        self._mark_report_stale()
         self._invalidate_periodogram()
         self.save_state()
 
     def undo(self) -> bool:
         changed = self.history.undo()
         if changed:
+            self._invalidate_tdfd_correction("Accepted frequencies changed")
+            self._mark_report_stale()
             self._invalidate_periodogram()
             self.save_state()
         return changed
@@ -214,15 +304,19 @@ class PrewhiteningEngine:
     def redo(self) -> bool:
         changed = self.history.redo()
         if changed:
+            self._invalidate_tdfd_correction("Accepted frequencies changed")
+            self._mark_report_stale()
             self._invalidate_periodogram()
             self.save_state()
         return changed
 
     def fit_model(self, *, cstop: float = 0.005, refine_frequencies: bool = False) -> FitResult:
+        self.clear_tdfd_correction()
         if self.model.is_empty or not self.model.active_terms():
             self.residuals = self.light_curve
             self._invalidate_periodogram()
-            return FitResult(self.residuals, self.model.clone(), True)
+            self.last_report = build_frequency_report(self.light_curve, self.model, fit_source="fixed")
+            return FitResult(self.residuals, self.model.clone(), True, report=self.last_report)
         if not refine_frequencies:
             return self._fit_fixed_frequency_model()
         return self._fit_native_model(cstop=cstop)
@@ -258,6 +352,7 @@ class PrewhiteningEngine:
         self.residuals = residuals
         self._invalidate_periodogram()
         self.save_state()
+        self.last_report = build_frequency_report(self.light_curve, self.model, fit_source="fixed")
         return FitResult(
             residuals=residuals,
             model=self.model.clone(),
@@ -266,6 +361,7 @@ class PrewhiteningEngine:
             used_native=False,
             offset=float(coef[0]),
             fourier_terms=self._fourier_terms_from_coefficients(terms, frequencies, coef),
+            report=self.last_report,
         )
 
     @staticmethod
@@ -371,6 +467,7 @@ class PrewhiteningEngine:
         converged = not err_path.exists() or err_path.read_text().strip() == "0"
         ampl_text = (self.state.work_dir / "ampl").read_text() if (self.state.work_dir / "ampl").exists() else ""
         offset, fourier_terms = self._fourier_terms_from_ampl_text(ampl_text)
+        self.last_report = build_frequency_report(self.light_curve, self.model, fit_source="native-refine")
         return FitResult(
             residuals=residuals,
             model=self.model.clone(),
@@ -380,6 +477,7 @@ class PrewhiteningEngine:
             used_native=True,
             offset=offset,
             fourier_terms=fourier_terms,
+            report=self.last_report,
         )
 
     @staticmethod

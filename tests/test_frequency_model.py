@@ -132,6 +132,7 @@ def test_fast_classification_ignores_negative_bases_for_candidate_generation():
     candidate = classify_peak(1.0, 0.2, model, baseline=1000.0, start_frequency=0.0, end_frequency=5.0)
 
     assert candidate.kind == "independent"
+    assert candidate.label == "new"
     assert candidate.coefficients == (0, 0)
 
 

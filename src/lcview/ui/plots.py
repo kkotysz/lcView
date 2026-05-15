@@ -84,6 +84,7 @@ class PlotPane(QtWidgets.QWidget):
         style: str = "solid",
         title: str | None = None,
         opacity: float = 1.0,
+        z: float | None = None,
     ) -> None:
         if self._plot is None:
             return
@@ -99,8 +100,18 @@ class PlotPane(QtWidgets.QWidget):
         else:
             item.setPen(pen)
             item.setData(x, y)
+        self._set_z_value(item, z)
 
-    def plot_error_bars(self, name: str, x: np.ndarray, y: np.ndarray, error: np.ndarray, color: str = "#475569") -> None:
+    def plot_error_bars(
+        self,
+        name: str,
+        x: np.ndarray,
+        y: np.ndarray,
+        error: np.ndarray,
+        color: str = "#475569",
+        *,
+        z: float | None = None,
+    ) -> None:
         if self._plot is None:
             return
         self.clear_item(name)
@@ -112,6 +123,7 @@ class PlotPane(QtWidgets.QWidget):
             beam=0.0,
             pen=self._pen(color, width=0.7, opacity=0.75),
         )
+        self._set_z_value(item, z)
         self._items[name] = item
         self._plot.addItem(item)
 
@@ -126,6 +138,7 @@ class PlotPane(QtWidgets.QWidget):
         opacity: float = 0.72,
         pen_color: str | None = "#0f172a",
         title: str | None = None,
+        z: float | None = None,
     ) -> None:
         if self._plot is None:
             return
@@ -150,6 +163,7 @@ class PlotPane(QtWidgets.QWidget):
             self._items[name] = item
         else:
             item.setData(x, y, symbolSize=effective_size, symbolBrush=brush, symbolPen=pen)
+        self._set_z_value(item, z)
 
     def plot_hline(
         self,
@@ -271,6 +285,14 @@ class PlotPane(QtWidgets.QWidget):
                 method(*args, **kwargs)
             except TypeError:
                 pass
+
+    @staticmethod
+    def _set_z_value(item: object, z: float | None) -> None:
+        if z is None:
+            return
+        set_z = getattr(item, "setZValue", None)
+        if set_z is not None:
+            set_z(float(z))
 
     def _clear_legend_entries(self) -> None:
         if self._legend is None:

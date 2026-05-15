@@ -7,13 +7,13 @@ import numpy as np
 import pytest
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from lcview.core.combinations import classify_peak
+from lcview.core.combinations import FrequencyCandidate, classify_peak
 from lcview.core.frequency_model import FrequencyModel
 from lcview.core.lightcurve import LightCurve
 from lcview.core.periodogram import PeriodogramResult
 from lcview.core.prewhitening import FitResult, FourierTerm, PrewhiteningEngine
 from lcview.core.sigma_clip import SigmaClipResult
-from lcview.core.tdfd import TdfdBin, TdfdResult
+from lcview.core.tdfd import TdfdBin, TdfdOptions, TdfdResult, TdfdTerm
 from lcview.ui import main_window as main_window_module
 from lcview.ui.main_window import DftWorker, FitWorker, MainWindow
 
@@ -71,6 +71,8 @@ def test_frequency_views_exposes_phase_controls_and_syncs_with_main_controls():
     assert window.frequency_shift_slider is not None
     assert window.frequency_smooth_check is not None
     assert window.frequency_source_combo is not None
+    assert window.phase_source_combo.currentData() == "component"
+    assert window.frequency_source_combo.currentData() == "component"
 
     window.frequency_period_spin.setValue(0.25)
     assert window.phase_period_spin.value() == pytest.approx(0.25)
@@ -81,6 +83,88 @@ def test_frequency_views_exposes_phase_controls_and_syncs_with_main_controls():
 
     window.frequency_smooth_check.setChecked(True)
     assert window.smooth_check.isChecked()
+    window.close()
+
+
+def test_frequency_view_combo_lists_independent_terms_and_syncs_accepted_selection(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    window.engine.add_independent(2.0)
+    window.engine.add_independent(3.0)
+    window.engine.add_combination((2, 0))
+    combination_index = window.engine.add_combination((1, 1))
+
+    window._refresh_frequency_views()
+
+    assert window.frequency_view_combo.count() == 2
+    assert [window.frequency_view_combo.itemData(index)["base_index"] for index in range(2)] == [0, 1]
+    assert [window.frequency_view_combo.itemData(index)["coefficients"] for index in range(2)] == [(1, 0), (0, 1)]
+
+    window.frequency_view_combo.setCurrentIndex(1)
+
+    assert window.selected_frequency == pytest.approx(3.0)
+    assert window.selected_coefficients == (0, 1)
+    assert window.prewhitening_panel.selected_term_index() == 1
+
+    window.prewhitening_panel.frequency_table.selectRow(0)
+    app.processEvents()
+
+    assert window.selected_frequency == pytest.approx(2.0)
+    assert window.selected_coefficients == (1, 0)
+    assert window.frequency_view_combo.currentData()["base_index"] == 0
+
+    window.prewhitening_panel.frequency_table.selectRow(combination_index)
+    app.processEvents()
+
+    assert window.selected_frequency == pytest.approx(5.0)
+    assert window.selected_coefficients == (1, 1)
+    assert window.frequency_view_combo.currentIndex() == -1
+    window.close()
+
+
+def test_results_tab_updates_after_fit_syncs_selection_and_exports(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    time = np.linspace(0.0, 10.0, 500)
+    flux = 0.8 * np.sin(2.0 * np.pi * 2.0 * time + 0.2)
+    error = np.full_like(time, 0.02)
+    lc_path = tmp_path / "results.dat"
+    np.savetxt(lc_path, np.column_stack([time, flux, error]))
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    window.engine.add_independent(2.0)
+    fit = window.engine.fit_model()
+
+    window._fit_finished(fit, None, [], False)
+
+    assert "Results" in [window.tabs.tabText(index) for index in range(window.tabs.count())]
+    assert window.results_panel.model.rowCount() == 1
+    assert "ready" in window.results_panel.summary_label.text()
+    assert window.results_panel.model.data(window.results_panel.model.index(0, 9), QtCore.Qt.DisplayRole) == "0.800"
+
+    proxy_index = window.results_panel.proxy.index(0, 0)
+    window.results_panel.table.selectRow(0)
+    window.results_panel.table.setCurrentIndex(proxy_index)
+    app.processEvents()
+
+    assert window.selected_frequency == pytest.approx(2.0)
+    assert window.selected_coefficients == (1,)
+    assert window.prewhitening_panel.selected_term_index() == 0
+
+    copied = window.results_panel.copy_tsv()
+    assert "Frequency" in copied
+    assert QtWidgets.QApplication.clipboard().text() == copied
+    csv_path = tmp_path / "results.csv"
+    window.results_panel.export_csv(csv_path)
+    assert "Frequency" in csv_path.read_text()
+
+    window.engine.add_combination((2,))
+    window._refresh_frequency_views()
+
+    assert "stale until next fit" in window.results_panel.summary_label.text()
+    assert window.results_panel.model.data(window.results_panel.model.index(0, 13), QtCore.Qt.DisplayRole) == "stale"
     window.close()
 
 
@@ -109,6 +193,31 @@ def test_dft_finished_selects_visible_candidate_after_amplitude_sort(tmp_path):
     assert window.phase_period_spin.value() == 0.5
     assert _selected_marker_value(window.dft_plot) == 2.0
     assert window.prewhitening_panel.selected_candidate() == candidates[1]
+    window.close()
+
+
+def test_dft_click_selects_nearest_peak_not_nearest_sample(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    periodogram = PeriodogramResult(
+        frequency=np.array([1.0, 2.0, 3.0, 4.0]),
+        amplitude=np.array([0.2, 0.1, 1.7, 0.3]),
+        peaks=[
+            {"frequency": 1.0, "amplitude": 0.2},
+        ],
+        used_native=False,
+    )
+    window.engine.last_periodogram = periodogram
+    window.engine.last_candidates = []
+
+    window._dft_clicked(2.4)
+
+    assert window.selected_frequency == pytest.approx(3.0)
+    assert window.selected_amplitude == pytest.approx(1.7)
+    assert window.prewhitening_panel.selected_candidate().frequency == pytest.approx(3.0)
     window.close()
 
 
@@ -293,6 +402,28 @@ def test_add_candidate_fits_and_refreshes_dft(tmp_path):
     window._add_candidate(candidate)
 
     assert (1, 1) in window.engine.model.terms
+    assert len(workers) == 1
+    assert isinstance(workers[0], FitWorker)
+    assert workers[0].refresh_periodogram
+    window.close()
+
+
+def test_add_multiple_candidates_runs_one_fit_and_refresh(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    window.engine.add_independent(1.0)
+    harmonic = FrequencyCandidate(2.0, 0.5, None, "harmonic", "2f1", (2,), 0.0, 0.0, "resolved", 0.1)
+    independent = FrequencyCandidate(3.7, 0.4, None, "independent", "new", (0,), 0.0, 0.0, "resolved", 0.1)
+    workers = []
+    window._run_worker = lambda worker, start_slot: workers.append(worker)
+
+    window._add_candidates([harmonic, independent])
+
+    assert (2, 0) in window.engine.model.terms
+    assert window.engine.model.bases[-1] == pytest.approx(3.7)
     assert len(workers) == 1
     assert isinstance(workers[0], FitWorker)
     assert workers[0].refresh_periodogram
@@ -756,10 +887,14 @@ def test_phase_smooth_and_hide_raw_controls(tmp_path):
     _skip_without_pyqtgraph(window.phase_plot)
 
     window.smooth_check.setChecked(True)
+    window.phase_errors_check.setChecked(True)
     window._phase_current_period()
     assert "phase_smooth" in window.phase_plot._items
     assert "phase" in window.phase_plot._items
+    assert "phase_errors" in window.phase_plot._items
     assert window.phase_plot._items["phase_smooth"].opts["pen"].widthF() >= 3.0
+    assert window.phase_plot._items["phase_errors"].zValue() < window.phase_plot._items["phase"].zValue()
+    assert window.phase_plot._items["phase_smooth"].zValue() > window.phase_plot._items["phase"].zValue()
 
     window.hide_phase_check.setChecked(True)
     window._phase_current_period()
@@ -798,6 +933,7 @@ def test_phase_sincos_fit_includes_accepted_harmonics(tmp_path):
     assert window._phase_fit_harmonics() == (1, 2)
     assert "phase_fit" in window.phase_plot._items
     assert window.phase_plot._items["phase_fit"].opts["pen"].widthF() >= 2.5
+    assert window.phase_plot._items["phase_fit"].zValue() > window.phase_plot._items["phase"].zValue()
     _, phase_fit_flux = window.phase_plot._items["phase_fit"].getData()
     assert phase_fit_flux[0] == pytest.approx(0.3)
     window.close()
@@ -853,6 +989,8 @@ def test_frequency_view_sincos_fit_toggle_draws_time_and_phase_fit(tmp_path):
     assert "phase_fit" not in window.phase_plot._items
     assert window.frequency_lc_plot._items["lc_fit"].opts["pen"].widthF() >= 2.4
     assert window.frequency_phase_plot._items["phase_fit"].opts["pen"].widthF() >= 2.5
+    assert window.frequency_lc_plot._items["lc_fit"].zValue() > window.frequency_lc_plot._items["lc"].zValue()
+    assert window.frequency_phase_plot._items["phase_fit"].zValue() > window.frequency_phase_plot._items["phase"].zValue()
     _, phase_fit_flux = window.frequency_phase_plot._items["phase_fit"].getData()
     assert phase_fit_flux[0] == pytest.approx(0.3)
 
@@ -936,14 +1074,204 @@ def test_sigma_clip_uses_dialog_selected_rejections(tmp_path, monkeypatch):
     window.close()
 
 
-def test_tdfd_plot_uses_distinct_colors_points_and_toggleable_legend():
+def test_sigma_clip_from_residuals_masks_original_curve_and_refits(tmp_path, monkeypatch):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text("0 10 0.1\n1 11 0.1\n2 12 0.1\n3 13 0.1\n")
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    original = window.engine.light_curve
+    residuals = original.with_flux([0.0, 100.0, 0.0, -100.0])
+    window.engine.residuals = residuals
+    window.engine.add_independent(1.0)
+    window.engine.residuals = residuals
+    window._current_fit = object()
+    keep_mask = np.array([True, False, True, True])
+    result = SigmaClipResult(
+        cleaned=residuals.masked(keep_mask),
+        rejected=residuals.masked(~keep_mask),
+        keep_mask=keep_mask,
+        sigma=3.5,
+    )
+
+    class FakeSigmaDialog:
+        def __init__(self, light_curve_arg, result_arg, parent=None, *, y_inverted=False):
+            assert light_curve_arg is residuals
+            assert result_arg is result
+
+        def exec(self):
+            return QtWidgets.QDialog.DialogCode.Accepted
+
+        def selected_reject_mask(self):
+            return np.array([False, True, False, False])
+
+    def fake_sigma_clip(light_curve_arg, sigma):
+        assert light_curve_arg is residuals
+        return result
+
+    monkeypatch.setattr(main_window_module, "sigma_clip_light_curve", fake_sigma_clip)
+    monkeypatch.setattr(main_window_module, "SigmaClipDialog", FakeSigmaDialog)
+    dft_calls = []
+    fit_dft_calls = []
+    window.start_dft = lambda: dft_calls.append("dft")
+    window.start_fit_and_dft = lambda: fit_dft_calls.append("fit+dft")
+
+    window._sigma_clip()
+
+    assert window.engine.light_curve.flux.tolist() == [10.0, 12.0, 13.0]
+    assert window.engine.residuals is None
+    assert window._current_fit is None
+    assert dft_calls == []
+    assert fit_dft_calls == ["fit+dft"]
+    window.close()
+
+
+def test_sigma_clip_continue_reloads_dialog_and_starts_dft_after_cancel(tmp_path, monkeypatch):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text("0 1 0.1\n1 10 0.1\n2 1 0.1\n3 -9 0.1\n")
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    first_curve = window.engine.light_curve
+    keep_mask = np.array([True, False, True, True])
+    result = SigmaClipResult(
+        cleaned=first_curve.masked(keep_mask),
+        rejected=first_curve.masked(~keep_mask),
+        keep_mask=keep_mask,
+        sigma=3.5,
+    )
+    dialog_sources = []
+
+    class FakeSigmaDialog:
+        calls = 0
+
+        def __init__(self, light_curve_arg, result_arg, parent=None, *, y_inverted=False):
+            dialog_sources.append(light_curve_arg)
+            self.result_mode = "continue" if FakeSigmaDialog.calls == 0 else "close"
+            FakeSigmaDialog.calls += 1
+
+        def exec(self):
+            if self.result_mode == "continue":
+                return QtWidgets.QDialog.DialogCode.Accepted
+            return QtWidgets.QDialog.DialogCode.Rejected
+
+        def selected_reject_mask(self):
+            return np.array([False, True, False, False])
+
+        def sigma_value(self):
+            return 3.5
+
+    monkeypatch.setattr(main_window_module, "sigma_clip_light_curve", lambda light_curve_arg, sigma: result)
+    monkeypatch.setattr(main_window_module, "SigmaClipDialog", FakeSigmaDialog)
+    dft_calls = []
+    window.start_dft = lambda: dft_calls.append("dft")
+
+    window._sigma_clip()
+
+    assert len(dialog_sources) == 2
+    assert dialog_sources[0] is first_curve
+    assert dialog_sources[1] is window.engine.light_curve
+    assert window.engine.light_curve.time.tolist() == [first_curve.time[0], first_curve.time[2], first_curve.time[3]]
+    assert dft_calls == ["dft"]
+    window.close()
+
+
+def test_tdfd_run_uses_selected_source_without_mutating_residuals(tmp_path, monkeypatch):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    window.engine.add_independent(1.0)
+    residuals = window.engine.light_curve.with_flux(np.zeros_like(window.engine.light_curve.flux))
+    window.engine.residuals = residuals
+    window._refresh_tdfd_controls()
+    captured = {}
+
+    def fake_run_tdfd(light_curve, model, *, options):
+        captured["light_curve"] = light_curve
+        captured["model"] = model
+        captured["options"] = options
+        return TdfdResult(
+            bins=[],
+            residuals=light_curve,
+            source_light_curve=light_curve,
+            corrected_residuals=light_curve,
+            options=options,
+            selected_base_index=options.selected_base_index,
+            message="TDFD ready",
+        )
+
+    monkeypatch.setattr(main_window_module, "run_tdfd", fake_run_tdfd)
+
+    window._run_tdfd()
+
+    assert captured["light_curve"] is residuals
+    assert captured["model"] is window.engine.model
+    assert captured["options"].source == "residual"
+    assert window.engine.residuals is residuals
+    assert "TDFD ready" in window.statusBar().currentMessage()
+    window.close()
+
+
+def test_tdfd_apply_and_clear_correction_updates_residual_without_model_change(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    window.engine.add_independent(1.0)
+    base_residual = window.engine.light_curve.with_flux(np.ones_like(window.engine.light_curve.flux))
+    corrected = window.engine.light_curve.with_flux(np.zeros_like(window.engine.light_curve.flux))
+    window.engine.residuals = base_residual
+    window._refresh_tdfd_controls()
+    options = window.tdfd_panel.options()
+    term = TdfdTerm((1,), "f1", 1.0, base_index=0, family_base_index=0, reported=True)
+    result = TdfdResult(
+        bins=[],
+        residuals=base_residual,
+        source_light_curve=base_residual,
+        corrected_residuals=corrected,
+        options=options,
+        fit_terms=(term,),
+        report_terms=(term,),
+        selected_base_index=0,
+        correction_term_indexes=(0,),
+        message="TDFD ready",
+    )
+    window.tdfd_panel.set_result(result)
+    dft_calls = []
+    window.start_dft = lambda: dft_calls.append("dft")
+
+    window._apply_tdfd_correction()
+
+    assert window.engine.residuals is corrected
+    assert window.engine.tdfd_correction_active
+    assert window.engine.model.bases == [1.0]
+    assert dft_calls == ["dft"]
+
+    window._clear_tdfd_correction()
+
+    assert window.engine.residuals is base_residual
+    assert not window.engine.tdfd_correction_active
+    assert dft_calls == ["dft", "dft"]
+    window.close()
+
+
+def test_tdfd_plot_uses_distinct_colors_points_windows_and_toggleable_legend():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     window = MainWindow()
     _skip_without_pyqtgraph(window.tdfd_panel.plot)
+    _skip_without_pyqtgraph(window.tdfd_panel.phase_plot)
+    _skip_without_pyqtgraph(window.tdfd_panel.division_plot)
     residuals = LightCurve(
         time=np.array([0.0, 1.0]),
         flux=np.array([0.1, -0.1]),
         error=np.array([0.01, 0.01]),
+    )
+    terms = (
+        TdfdTerm((1, 0), "f1", 1.0, base_index=0, family_base_index=0, reported=True),
+        TdfdTerm((0, 1), "f2", 2.0, base_index=1, family_base_index=1, reported=True),
     )
     result = TdfdResult(
         bins=[
@@ -951,6 +1279,21 @@ def test_tdfd_plot_uses_distinct_colors_points_and_toggleable_legend():
             TdfdBin(1.0, 2.0, 1.5, np.array([1.0, 2.0]), np.array([0.4, 0.6]), np.array([0.0, 0.0]), 0.2, 20),
         ],
         residuals=residuals,
+        corrected_residuals=residuals,
+        source_light_curve=residuals,
+        frequency_labels=("f1", "f2"),
+        options=TdfdOptions(selected_base_index=0),
+        fit_terms=terms,
+        report_terms=terms,
+        window_starts=np.array([0.0, 1.0]),
+        window_ends=np.array([1.0, 2.0]),
+        window_centers=np.array([0.5, 1.5]),
+        window_counts=np.array([1, 1]),
+        window_points=2,
+        step_points=1,
+        fit_parameter_count=5,
+        selected_base_index=0,
+        correction_term_indexes=(0,),
     )
 
     window.tdfd_panel.set_result(result)
@@ -959,13 +1302,28 @@ def test_tdfd_plot_uses_distinct_colors_points_and_toggleable_legend():
     assert "f2" in window.tdfd_panel.plot._items
     assert "f1_points" in window.tdfd_panel.plot._items
     assert "f2_points" in window.tdfd_panel.plot._items
+    assert "f1" in window.tdfd_panel.phase_plot._items
+    assert "f2" in window.tdfd_panel.phase_plot._items
     color_1 = window.tdfd_panel.plot._items["f1"].opts["pen"].color().name()
     color_2 = window.tdfd_panel.plot._items["f2"].opts["pen"].color().name()
     assert color_1 != color_2
     assert window.tdfd_panel.plot._legend.isVisible()
+    assert window.tdfd_panel.division_frequency_combo.count() == 2
+    assert "Division for f1=1.000" in window.tdfd_panel.division_label.text()
+    assert not window.tdfd_panel.division_plot.isHidden()
+    assert "tdfd_source" in window.tdfd_panel.division_plot._items
+    assert "tdfd_window_centers" in window.tdfd_panel.division_plot._items
+    assert len(window.tdfd_panel.division_plot._markers) == 4
+
+    window.tdfd_panel.division_frequency_combo.setCurrentIndex(1)
+
+    assert "Division for f2=2.000" in window.tdfd_panel.division_label.text()
 
     window.tdfd_panel.legend_check.setChecked(False)
+    window.tdfd_panel.division_check.setChecked(False)
 
     assert not window.tdfd_panel.plot._legend.isVisible()
+    assert window.tdfd_panel.division_label.isHidden()
+    assert window.tdfd_panel.division_plot.isHidden()
     assert "f1" in window.tdfd_panel.plot._items
     window.close()

@@ -6,7 +6,7 @@ import numpy as np
 from PySide6 import QtCore, QtWidgets
 
 from lcview.core.lightcurve import LightCurve
-from lcview.core.sigma_clip import SigmaClipResult
+from lcview.core.sigma_clip import SigmaClipResult, sigma_clip_light_curve
 from lcview.display import fixed_text
 from .plots import PlotPane
 
@@ -180,13 +180,30 @@ class SigmaClipDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setWindowTitle("Sigma clipping preview")
         self.light_curve = light_curve
-        self.result = result
+        self.clip_result = result
         self.y_inverted = bool(y_inverted)
+        self.result_mode = "close"
         self.table_model = SigmaRejectedTableModel(light_curve, ~result.keep_mask)
 
         layout = QtWidgets.QVBoxLayout(self)
-        summary = QtWidgets.QLabel(f"Sigma={fixed_text(result.sigma)} proposed {self.table_model.rowCount()} rejected points.")
-        layout.addWidget(summary)
+        options = QtWidgets.QHBoxLayout()
+        self.sigma_spin = QtWidgets.QDoubleSpinBox()
+        self.sigma_spin.setRange(0.1, 20.0)
+        self.sigma_spin.setDecimals(2)
+        self.sigma_spin.setSingleStep(0.1)
+        self.sigma_spin.setValue(float(result.sigma))
+        self.maxiters_spin = QtWidgets.QSpinBox()
+        self.maxiters_spin.setRange(1, 100)
+        self.maxiters_spin.setValue(6)
+        self.preview_button = QtWidgets.QPushButton("Preview clip")
+        self.summary_label = QtWidgets.QLabel()
+        options.addWidget(QtWidgets.QLabel("Sigma"))
+        options.addWidget(self.sigma_spin)
+        options.addWidget(QtWidgets.QLabel("Max iter"))
+        options.addWidget(self.maxiters_spin)
+        options.addWidget(self.preview_button)
+        options.addWidget(self.summary_label, 1)
+        layout.addLayout(options)
 
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         self.plot = PlotPane("Sigma clipping preview")
@@ -221,10 +238,19 @@ class SigmaClipDialog(QtWidgets.QDialog):
         splitter.setSizes([420, 220])
         layout.addWidget(splitter, 1)
 
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        layout.addWidget(buttons)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.addStretch(1)
+        self.clip_close_button = QtWidgets.QPushButton("Clip and close")
+        self.clip_continue_button = QtWidgets.QPushButton("Clip and continue")
+        self.cancel_button = QtWidgets.QPushButton("Cancel")
+        buttons.addWidget(self.clip_close_button)
+        buttons.addWidget(self.clip_continue_button)
+        buttons.addWidget(self.cancel_button)
+        layout.addLayout(buttons)
+        self.clip_close_button.clicked.connect(self._clip_and_close)
+        self.clip_continue_button.clicked.connect(self._clip_and_continue)
+        self.cancel_button.clicked.connect(self.reject)
+        self.preview_button.clicked.connect(self.recompute_clip)
         self.select_all_button.clicked.connect(lambda: self._set_all(True))
         self.select_none_button.clicked.connect(lambda: self._set_all(False))
         self.table_model.dataChanged.connect(lambda *_: self.refresh_plot())
@@ -236,6 +262,32 @@ class SigmaClipDialog(QtWidgets.QDialog):
 
     def cleaned_light_curve(self) -> LightCurve:
         return self.light_curve.masked(~self.selected_reject_mask())
+
+    def sigma_value(self) -> float:
+        return float(self.sigma_spin.value())
+
+    def maxiters_value(self) -> int:
+        return int(self.maxiters_spin.value())
+
+    @QtCore.Slot()
+    def recompute_clip(self) -> None:
+        self.set_result(sigma_clip_light_curve(self.light_curve, sigma=self.sigma_value(), maxiters=self.maxiters_value()))
+
+    def set_result(self, result: SigmaClipResult) -> None:
+        self.clip_result = result
+        self.table_model = SigmaRejectedTableModel(self.light_curve, ~result.keep_mask)
+        self.table.setModel(self.table_model)
+        self.table.resizeColumnsToContents()
+        self.table_model.dataChanged.connect(lambda *_: self.refresh_plot())
+        self.refresh_plot()
+
+    def _clip_and_close(self) -> None:
+        self.result_mode = "close"
+        self.accept()
+
+    def _clip_and_continue(self) -> None:
+        self.result_mode = "continue"
+        self.accept()
 
     def _set_all(self, rejected: bool) -> None:
         self.table_model.set_all(rejected)
@@ -259,6 +311,11 @@ class SigmaClipDialog(QtWidgets.QDialog):
     def refresh_plot(self) -> None:
         reject_mask = self.selected_reject_mask()
         keep_mask = ~reject_mask
+        rejected_count = int(np.count_nonzero(reject_mask))
+        self.summary_label.setText(f"Sigma={fixed_text(self.sigma_value())}; selected {rejected_count} rejected points.")
+        enabled = rejected_count > 0
+        self.clip_close_button.setEnabled(enabled)
+        self.clip_continue_button.setEnabled(enabled)
         self.plot.plot_points("kept", self.light_curve.time[keep_mask], self.light_curve.flux[keep_mask], color="#2563eb", size=3, opacity=0.45, pen_color=None)
         if np.any(reject_mask):
             self.plot.plot_points(

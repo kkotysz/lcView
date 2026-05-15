@@ -29,6 +29,11 @@ class SessionSettings:
     points_in_bin: float = 20.0
     sigma: float = 3.5
     tdfd_bins: int = 20
+    tdfd_source: str = "residual"
+    tdfd_auto_window: bool = True
+    tdfd_window_points: int = 0
+    tdfd_step_points: int = 0
+    tdfd_selected_base_index: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "SessionSettings":
@@ -58,6 +63,11 @@ class SessionSettings:
             "points_in_bin": self.points_in_bin,
             "sigma": self.sigma,
             "tdfd_bins": self.tdfd_bins,
+            "tdfd_source": self.tdfd_source,
+            "tdfd_auto_window": self.tdfd_auto_window,
+            "tdfd_window_points": self.tdfd_window_points,
+            "tdfd_step_points": self.tdfd_step_points,
+            "tdfd_selected_base_index": self.tdfd_selected_base_index,
         }
 
 

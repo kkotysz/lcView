@@ -9,6 +9,8 @@ from lcview.core import periodogram as periodogram_module
 from lcview.core import prewhitening as prewhitening_module
 from lcview.core.periodogram import PeriodogramResult, compute_periodogram
 from lcview.core.prewhitening import PrewhiteningEngine
+from lcview.core.results import build_frequency_report
+from lcview.core.tdfd import TdfdResult
 from lcview.native.build import NativeBuildError, build_native
 
 
@@ -159,6 +161,63 @@ def test_fast_fit_handles_multiple_independent_frequencies(tmp_path: Path):
     assert second.frequency == pytest.approx(2.5)
     assert second.sin_coefficient == pytest.approx(0.7 * np.cos(-0.4), abs=1e-10)
     assert second.cos_coefficient == pytest.approx(0.7 * np.sin(-0.4), abs=1e-10)
+    assert fit.report is not None
+    assert fit.report.nobs == len(time)
+    assert fit.report.rows[0].amplitude == pytest.approx(1.2, abs=1e-10)
+    assert fit.report.rows[0].phase_cycles == pytest.approx((0.3 / (2 * np.pi)) % 1.0, abs=1e-10)
+
+
+def test_frequency_report_returns_errors_and_phase_cycles(tmp_path: Path):
+    rng = np.random.default_rng(123)
+    time_values = np.linspace(0.0, 20.0, 1200)
+    amplitude = 1.4
+    phase = 0.35
+    error = np.full_like(time_values, 0.05)
+    flux = amplitude * np.sin(2.0 * np.pi * 1.5 * time_values + phase) + rng.normal(0.0, 0.02, size=time_values.size)
+    lc_path = tmp_path / "lc.dat"
+    np.savetxt(lc_path, np.column_stack([time_values, flux, error]))
+    engine = PrewhiteningEngine.from_file(lc_path)
+    engine.add_independent(1.5)
+
+    report = build_frequency_report(engine.light_curve, engine.model, fit_source="test")
+
+    row = report.rows[0]
+    assert row.kind == "independent"
+    assert row.frequency == pytest.approx(1.5)
+    assert row.frequency_error == pytest.approx(1.0 / engine.light_curve.baseline)
+    assert row.period_error == pytest.approx(row.frequency_error / row.frequency**2)
+    assert row.amplitude == pytest.approx(amplitude, abs=0.01)
+    assert row.amplitude_error is not None and row.amplitude_error > 0
+    assert row.phase_cycles == pytest.approx((phase / (2 * np.pi)) % 1.0, abs=0.003)
+    assert row.phase_error_cycles is not None and row.phase_error_cycles > 0
+
+
+def test_frequency_report_kinds_disabled_rows_and_propagated_rayleigh(tmp_path: Path):
+    time_values = np.linspace(0.0, 10.0, 500)
+    error = np.full_like(time_values, 0.02)
+    flux = np.sin(2 * np.pi * time_values) + 0.2 * np.sin(4 * np.pi * time_values)
+    lc_path = tmp_path / "lc.dat"
+    np.savetxt(lc_path, np.column_stack([time_values, flux, error]))
+    engine = PrewhiteningEngine.from_file(lc_path)
+    engine.add_independent(1.0)
+    engine.add_independent(1.7)
+    harmonic_index = engine.add_combination((2, 0))
+    combination_index = engine.add_combination((1, 1))
+    engine.set_term_enabled(combination_index, False)
+
+    report = build_frequency_report(engine.light_curve, engine.model, fit_source="test")
+    by_label = {row.label: row for row in report.rows}
+
+    assert by_label["2f1"].kind == "harmonic"
+    assert by_label["f1 + f2"].kind == "combination"
+    assert by_label["f1 + f2"].status == "disabled"
+    assert by_label["f1 + f2"].amplitude is None
+    assert by_label["2f1"].frequency_error == pytest.approx(2.0 / engine.light_curve.baseline)
+    combo_error = np.sqrt(2.0) / engine.light_curve.baseline
+    assert by_label["f1 + f2"].frequency_error == pytest.approx(combo_error)
+    assert report.n_terms == 4
+    assert report.n_active_terms == 3
+    assert harmonic_index >= 0
 
 
 def test_fourier_terms_parse_from_ampl_text():
@@ -178,6 +237,68 @@ Term #  1: 1 0
     assert terms[0].frequency == pytest.approx(2.0)
     assert terms[0].sin_coefficient == pytest.approx(4.0 * np.cos(0.5))
     assert terms[0].cos_coefficient == pytest.approx(4.0 * np.sin(0.5))
+
+
+def test_tdfd_correction_is_residual_layer_not_frequency_model(tmp_path: Path):
+    lc_path = tmp_path / "lc.dat"
+    time_values = np.linspace(0, 5, 100)
+    error = np.full_like(time_values, 0.01)
+    np.savetxt(lc_path, np.column_stack([time_values, np.sin(2 * np.pi * time_values), error]))
+    engine = PrewhiteningEngine.from_file(lc_path)
+    engine.add_independent(1.0)
+    base_residual = engine.light_curve.with_flux(np.ones_like(engine.light_curve.flux))
+    corrected = engine.light_curve.with_flux(np.zeros_like(engine.light_curve.flux))
+    engine.residuals = base_residual
+    result = TdfdResult(
+        bins=[],
+        residuals=base_residual,
+        source_light_curve=base_residual,
+        corrected_residuals=corrected,
+        selected_base_index=0,
+        correction_term_indexes=(0,),
+    )
+
+    returned = engine.apply_tdfd_correction(result)
+
+    assert returned is corrected
+    assert engine.residuals is corrected
+    assert engine.tdfd_correction_active
+    assert engine.model.bases == [1.0]
+    assert engine.last_periodogram is None
+
+    assert engine.clear_tdfd_correction()
+    assert engine.residuals is base_residual
+    assert not engine.tdfd_correction_active
+    assert engine.model.bases == [1.0]
+
+
+def test_model_change_disables_stale_tdfd_correction(tmp_path: Path):
+    lc_path = tmp_path / "lc.dat"
+    time_values = np.linspace(0, 5, 100)
+    error = np.full_like(time_values, 0.01)
+    np.savetxt(lc_path, np.column_stack([time_values, np.sin(2 * np.pi * time_values), error]))
+    engine = PrewhiteningEngine.from_file(lc_path)
+    engine.add_independent(1.0)
+    base_residual = engine.light_curve.with_flux(np.ones_like(engine.light_curve.flux))
+    corrected = engine.light_curve.with_flux(np.zeros_like(engine.light_curve.flux))
+    engine.residuals = base_residual
+    engine.apply_tdfd_correction(
+        TdfdResult(
+            bins=[],
+            residuals=base_residual,
+            source_light_curve=base_residual,
+            corrected_residuals=corrected,
+            selected_base_index=0,
+            correction_term_indexes=(0,),
+        )
+    )
+
+    engine.add_independent(2.0)
+
+    assert not engine.tdfd_correction_active
+    assert engine.tdfd_result is None
+    assert engine.residuals is base_residual
+    assert engine.tdfd_correction_stale_reason == "Accepted frequencies changed"
 
 
 def test_native_build_smoke():

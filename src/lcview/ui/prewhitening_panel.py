@@ -17,7 +17,9 @@ class PrewhiteningPanel(QtWidgets.QWidget):
     frequency_selected = QtCore.Signal(object)
     candidate_selected = QtCore.Signal(object)
     add_independent_requested = QtCore.Signal(float)
+    add_independents_requested = QtCore.Signal(object)
     add_candidate_requested = QtCore.Signal(object)
+    add_candidates_requested = QtCore.Signal(object)
     base_frequency_edited = QtCore.Signal(int, float)
     remove_term_requested = QtCore.Signal(int)
     clear_frequencies_requested = QtCore.Signal()
@@ -41,7 +43,8 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         self.candidate_proxy.setDynamicSortFilter(True)
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(5)
 
         self.frequency_table = QtWidgets.QTableView()
         self.frequency_table.setModel(self.frequency_model)
@@ -69,25 +72,30 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         self.candidate_table = QtWidgets.QTableView()
         self.candidate_table.setModel(self.candidate_proxy)
         self.candidate_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        self.candidate_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.candidate_table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.candidate_table.setSortingEnabled(True)
         self.candidate_table.sortByColumn(CANDIDATE_AMPLITUDE_COLUMN, QtCore.Qt.SortOrder.DescendingOrder)
         self._configure_candidate_table()
-        layout.addWidget(QtWidgets.QLabel("Current peak candidates"))
-        layout.addWidget(self.candidate_table, 3)
 
         candidate_buttons = QtWidgets.QGridLayout()
+        candidate_buttons.setContentsMargins(0, 0, 0, 0)
+        candidate_buttons.setHorizontalSpacing(5)
+        candidate_buttons.setVerticalSpacing(4)
         self.add_independent_button = QtWidgets.QPushButton("Add independent")
-        self.add_candidate_button = QtWidgets.QPushButton("Add combination")
+        self.add_candidate_button = QtWidgets.QPushButton("Add selected")
         self.fit_button = QtWidgets.QPushButton("Fit model")
         self.refine_button = QtWidgets.QPushButton("Refine frequencies")
+        self.add_independent_button.setToolTip("Add selected peak candidate(s) as new independent frequencies.")
+        self.add_candidate_button.setToolTip("Add selected candidate(s), preserving combination/harmonic classification when available.")
         self.fit_button.setToolTip("Fast linear fit at the accepted frequencies. Use Calculate DFT to refresh peaks.")
         self.refine_button.setToolTip("Slow nonlinear refinement of accepted frequencies.")
         candidate_buttons.addWidget(self.add_independent_button, 0, 0)
         candidate_buttons.addWidget(self.add_candidate_button, 0, 1)
         candidate_buttons.addWidget(self.fit_button, 1, 0)
         candidate_buttons.addWidget(self.refine_button, 1, 1)
+        layout.addWidget(QtWidgets.QLabel("Current peak candidates"))
         layout.addLayout(candidate_buttons)
+        layout.addWidget(self.candidate_table, 3)
 
         tool_buttons = QtWidgets.QHBoxLayout()
         self.detrend_button = QtWidgets.QPushButton("Detrend")
@@ -104,6 +112,7 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         self.frequency_model.term_toggled.connect(self.toggle_term_requested)
         self.frequency_model.base_frequency_edited.connect(lambda index, frequency: self.base_frequency_edited.emit(index, frequency))
         self.frequency_table.clicked.connect(self._frequency_clicked)
+        self.frequency_table.selectionModel().currentRowChanged.connect(self._frequency_current_changed)
         self.candidate_table.clicked.connect(self._candidate_clicked)
         self.add_independent_button.clicked.connect(self._add_independent_selected)
         self.add_candidate_button.clicked.connect(self._add_candidate_selected)
@@ -120,6 +129,34 @@ class PrewhiteningPanel(QtWidgets.QWidget):
     def set_frequency_model(self, model: FrequencyModel) -> None:
         self.frequency_model.set_frequency_model(model)
         self.frequency_table.resizeColumnsToContents()
+
+    def select_term(self, *, term_index: int | None = None, coefficients: tuple[int, ...] | None = None) -> bool:
+        target_row = None
+        coefficients = None if coefficients is None else tuple(coefficients)
+        for row_number, row in enumerate(self.frequency_model.rows):
+            if term_index is not None and int(row["index"]) == int(term_index):
+                target_row = row_number
+                break
+            if coefficients is not None and tuple(row["coefficients"]) == coefficients:
+                target_row = row_number
+                break
+
+        selection_model = self.frequency_table.selectionModel()
+        if selection_model is None:
+            return False
+        blocker = QtCore.QSignalBlocker(selection_model)
+        try:
+            if target_row is None:
+                selection_model.clearSelection()
+                self.frequency_table.setCurrentIndex(QtCore.QModelIndex())
+                return False
+            index = self.frequency_model.index(target_row, 0)
+            self.frequency_table.selectRow(target_row)
+            self.frequency_table.setCurrentIndex(index)
+            self.frequency_table.scrollTo(index, QtWidgets.QAbstractItemView.ScrollHint.PositionAtCenter)
+            return True
+        finally:
+            del blocker
 
     def set_candidates(
         self,
@@ -142,15 +179,24 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         return selected
 
     def selected_candidate(self) -> FrequencyCandidate | None:
+        candidates = self.selected_candidates()
+        return candidates[0] if candidates else None
+
+    def selected_candidates(self) -> list[FrequencyCandidate]:
         rows = self.candidate_table.selectionModel().selectedRows()
         if not rows:
             if self.candidate_proxy.rowCount() == 0:
-                return None
+                return []
             rows = [self.candidate_proxy.index(0, 0)]
-        source_index = self.candidate_proxy.mapToSource(rows[0])
-        if not source_index.isValid():
-            return None
-        return self.candidate_model.candidates[source_index.row()]
+        candidates: list[FrequencyCandidate] = []
+        seen: set[int] = set()
+        for row in sorted(rows, key=lambda item: item.row()):
+            source_index = self.candidate_proxy.mapToSource(row)
+            if not source_index.isValid() or source_index.row() in seen:
+                continue
+            seen.add(source_index.row())
+            candidates.append(self.candidate_model.candidates[source_index.row()])
+        return candidates
 
     def selected_term_index(self) -> int | None:
         rows = self.frequency_table.selectionModel().selectedRows()
@@ -159,12 +205,20 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         return int(self.frequency_model.rows[rows[0].row()]["index"])
 
     def _add_independent_selected(self) -> None:
-        candidate = self.selected_candidate()
+        candidates = self.selected_candidates()
+        if len(candidates) > 1:
+            self.add_independents_requested.emit(candidates)
+            return
+        candidate = candidates[0] if candidates else None
         if candidate is not None:
             self.add_independent_requested.emit(candidate.frequency)
 
     def _add_candidate_selected(self) -> None:
-        candidate = self.selected_candidate()
+        candidates = self.selected_candidates()
+        if len(candidates) > 1:
+            self.add_candidates_requested.emit(candidates)
+            return
+        candidate = candidates[0] if candidates else None
         if candidate is None:
             return
         if candidate.kind == "independent" or not any(candidate.coefficients):
@@ -187,7 +241,13 @@ class PrewhiteningPanel(QtWidgets.QWidget):
             self.frequency_table.edit(index)
 
     def _frequency_clicked(self, item: QtCore.QModelIndex) -> None:
-        if item.isValid():
+        self._emit_frequency_selected(item)
+
+    def _frequency_current_changed(self, current: QtCore.QModelIndex, previous: QtCore.QModelIndex) -> None:
+        self._emit_frequency_selected(current)
+
+    def _emit_frequency_selected(self, item: QtCore.QModelIndex) -> None:
+        if item.isValid() and 0 <= item.row() < len(self.frequency_model.rows):
             self.frequency_selected.emit(self.frequency_model.rows[item.row()])
 
     def _candidate_clicked(self, item: QtCore.QModelIndex) -> None:

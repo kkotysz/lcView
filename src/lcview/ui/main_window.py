@@ -12,12 +12,13 @@ from lcview.core.phase import FoldedLightCurve, PhaseSeriesFit, boxcar_smooth, e
 from lcview.core.prewhitening import PrewhiteningEngine
 from lcview.core.sigma_clip import sigma_clip_light_curve
 from lcview.core.session import SessionState
-from lcview.core.tdfd import run_tdfd
+from lcview.core.tdfd import TdfdOptions, run_tdfd
 from lcview.display import fixed_text, frequency_text, period_text_from_frequency
 from .column_selection_dialog import ColumnSelectionDialog
 from .detrend_dialog import DetrendDialog
 from .plots import PlotPane
 from .prewhitening_panel import PrewhiteningPanel
+from .results_panel import ResultsPanel
 from .sigma_clip_dialog import SigmaClipDialog
 from .tdfd_panel import TdfdPanel
 from .widgets import SignificantDoubleSpinBox
@@ -106,6 +107,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._pending_column_table: LightCurveTable | None = None
         self._pending_column_selection: tuple[int, int, int] | None = None
         self._syncing_frequency_phase_controls = False
+        self._syncing_frequency_selection = False
+        self._syncing_results_selection = False
 
         self._build_ui()
         self._set_initial_geometry()
@@ -134,40 +137,60 @@ class MainWindow(QtWidgets.QMainWindow):
 
         left = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout(left)
-        form = QtWidgets.QFormLayout()
+        left_layout.setContentsMargins(6, 6, 6, 6)
+        left_layout.setSpacing(6)
+        dft_grid = QtWidgets.QGridLayout()
+        dft_grid.setContentsMargins(0, 0, 0, 0)
+        dft_grid.setHorizontalSpacing(6)
+        dft_grid.setVerticalSpacing(3)
         self.start_spin = SignificantDoubleSpinBox()
         self.start_spin.setRange(0, 100000)
         self.start_spin.setValue(0.0)
+        self.start_spin.setMaximumWidth(96)
         self.end_spin = SignificantDoubleSpinBox()
         self.end_spin.setRange(0.001, 100000)
         self.end_spin.setValue(80.0)
+        self.end_spin.setMaximumWidth(96)
         self.precision_spin = QtWidgets.QDoubleSpinBox()
         self.precision_spin.setRange(1, 500)
         self.precision_spin.setValue(10)
+        self.precision_spin.setMaximumWidth(96)
         self.dft_backend_combo = QtWidgets.QComboBox()
         self.dft_backend_combo.addItem("fwpeaks (native)", "fwpeaks")
         self.dft_backend_combo.addItem("Python DFT (manual)", "python")
         self.dft_backend_combo.setToolTip("fwpeaks is the normal backend. Python DFT is a slower explicit fallback.")
+        self.dft_backend_combo.setMaximumWidth(190)
         self.recalc_button = QtWidgets.QPushButton("Calculate DFT")
-        form.addRow("Start frequency", self.start_spin)
-        form.addRow("End frequency", self.end_spin)
-        form.addRow("Precision", self.precision_spin)
-        form.addRow("DFT backend", self.dft_backend_combo)
-        left_layout.addLayout(form)
+        dft_grid.addWidget(QtWidgets.QLabel("Start f"), 0, 0)
+        dft_grid.addWidget(self.start_spin, 0, 1)
+        dft_grid.addWidget(QtWidgets.QLabel("End f"), 0, 2)
+        dft_grid.addWidget(self.end_spin, 0, 3)
+        dft_grid.addWidget(QtWidgets.QLabel("Precision"), 1, 0)
+        dft_grid.addWidget(self.precision_spin, 1, 1)
+        dft_grid.addWidget(QtWidgets.QLabel("Backend"), 1, 2)
+        dft_grid.addWidget(self.dft_backend_combo, 1, 3)
+        dft_grid.setColumnStretch(4, 1)
+        left_layout.addLayout(dft_grid)
         left_layout.addWidget(self.recalc_button)
         self.dft_progress = QtWidgets.QProgressBar()
         self.dft_progress.setRange(0, 100)
         self.dft_progress.setValue(0)
         self.dft_progress.setTextVisible(True)
         self.dft_progress.setFormat("%p%")
+        self.dft_progress.setMaximumHeight(16)
         self.progress_label = QtWidgets.QLabel("Idle")
+        self.progress_label.setWordWrap(False)
+        self.progress_label.setMaximumHeight(self.progress_label.fontMetrics().height() + 6)
         left_layout.addWidget(self.dft_progress)
         left_layout.addWidget(self.progress_label)
         selection_group = QtWidgets.QGroupBox("Selected frequency")
         selection_layout = QtWidgets.QVBoxLayout(selection_group)
+        selection_layout.setContentsMargins(8, 4, 8, 6)
+        selection_layout.setSpacing(2)
         self.selection_label = QtWidgets.QLabel("No frequency selected")
         self.selection_label.setWordWrap(True)
         selection_layout.addWidget(self.selection_label)
+        selection_group.setMaximumHeight(112)
         left_layout.addWidget(selection_group)
 
         self.phase_controls_group = QtWidgets.QGroupBox("Phase controls")
@@ -226,6 +249,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.phase_source_combo.addItem("Residual", "residual")
         self.phase_source_combo.addItem("Original", "original")
         self.phase_source_combo.addItem("Selected component (resid0X)", "component")
+        self.phase_source_combo.setCurrentIndex(self.phase_source_combo.findData("component"))
         phase_buttons = QtWidgets.QHBoxLayout()
         self.use_selected_button = QtWidgets.QPushButton("Use selected")
         self.phase_now_button = QtWidgets.QPushButton("Phase now")
@@ -353,6 +377,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.frequency_source_combo.addItem("Residual", "residual")
         self.frequency_source_combo.addItem("Original", "original")
         self.frequency_source_combo.addItem("Selected component (resid0X)", "component")
+        self.frequency_source_combo.setCurrentIndex(self.frequency_source_combo.findData("component"))
         freq_overlay_controls = QtWidgets.QHBoxLayout()
         freq_overlay_controls.addWidget(self.frequency_smooth_check)
         freq_overlay_controls.addWidget(QtWidgets.QLabel("Window"))
@@ -375,12 +400,14 @@ class MainWindow(QtWidgets.QMainWindow):
         freq_split.addWidget(self.frequency_lc_plot)
         freq_split.addWidget(self.frequency_phase_plot)
         freq_view_layout.addWidget(freq_split, 1)
+        self.results_panel = ResultsPanel()
         self.petersen_text = QtWidgets.QPlainTextEdit()
         self.petersen_text.setReadOnly(True)
         self.tabs.addTab(lc_view, "Light curve")
         self.tabs.addTab(dft_view, "DFT")
         self.phase_tab_index = self.tabs.addTab(self.phase_plot, PHASE_TAB_TITLE)
         self.tabs.addTab(freq_view, "Frequency views")
+        self.tabs.addTab(self.results_panel, "Results")
         self.tabs.addTab(self.tdfd_panel, "TDFD")
         self.tabs.addTab(self.petersen_text, "Petersen")
         central.addWidget(self.tabs)
@@ -414,6 +441,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dft_daily_aliases_check.stateChanged.connect(lambda _: self._dft_options_changed())
         self.dft_yearly_aliases_check.stateChanged.connect(lambda _: self._dft_options_changed())
         self.tdfd_panel.legend_check.stateChanged.connect(lambda _: self._settings_changed())
+        self.tdfd_panel.source_combo.currentIndexChanged.connect(lambda _: self._settings_changed())
+        self.tdfd_panel.auto_window_check.stateChanged.connect(lambda _: self._settings_changed())
+        self.tdfd_panel.window_points_spin.valueChanged.connect(lambda _: self._settings_changed())
+        self.tdfd_panel.step_points_spin.valueChanged.connect(lambda _: self._settings_changed())
+        self.tdfd_panel.division_frequency_combo.currentIndexChanged.connect(lambda _: self._settings_changed())
         self.use_selected_button.clicked.connect(self._use_selected_period)
         self.phase_now_button.clicked.connect(self._phase_now_clicked)
         self.frequency_view_combo.currentIndexChanged.connect(self._frequency_view_changed)
@@ -441,7 +473,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.prewhitening_panel.frequency_selected.connect(self._frequency_row_selected)
         self.prewhitening_panel.candidate_selected.connect(self._candidate_selected)
         self.prewhitening_panel.add_independent_requested.connect(self._add_independent)
+        self.prewhitening_panel.add_independents_requested.connect(self._add_independents)
         self.prewhitening_panel.add_candidate_requested.connect(self._add_candidate)
+        self.prewhitening_panel.add_candidates_requested.connect(self._add_candidates)
         self.prewhitening_panel.base_frequency_edited.connect(self._edit_base_frequency)
         self.prewhitening_panel.remove_term_requested.connect(self._remove_term)
         self.prewhitening_panel.clear_frequencies_requested.connect(self._clear_frequencies)
@@ -453,8 +487,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.prewhitening_panel.export_requested.connect(self._export)
         self.prewhitening_panel.detrend_requested.connect(self._detrend)
         self.prewhitening_panel.sigma_clip_requested.connect(self._sigma_clip)
-        self.prewhitening_panel.tdfd_requested.connect(lambda: self._run_tdfd(self.tdfd_panel.bins_spin.value()))
+        self.prewhitening_panel.tdfd_requested.connect(self._run_tdfd)
         self.tdfd_panel.run_requested.connect(self._run_tdfd)
+        self.tdfd_panel.apply_requested.connect(self._apply_tdfd_correction)
+        self.tdfd_panel.clear_requested.connect(self._clear_tdfd_correction)
+        self.results_panel.row_selected.connect(self._results_row_selected)
+        self.results_panel.export_requested.connect(self._export_results_csv)
         self._sync_frequency_phase_controls_from_main()
         self._active_tab_changed(self.tabs.currentIndex())
 
@@ -515,6 +553,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.precision_spin.setValue(settings.precision)
         self._set_default_smooth_window(self.engine.light_curve)
         self._refresh_frequency_views()
+        self.tdfd_panel.set_options_from_settings(
+            source=settings.tdfd_source,
+            auto_window=settings.tdfd_auto_window,
+            window_points=settings.tdfd_window_points,
+            step_points=settings.tdfd_step_points,
+            selected_base_index=settings.tdfd_selected_base_index,
+        )
         self._plot_light_curve(self.engine.light_curve)
         self.selected_frequency = None
         self.selected_base_index = None
@@ -523,6 +568,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_coefficients = None
         self._current_periodogram_plot = None
         self._current_fit = None
+        self.tdfd_panel.clear_result()
+        self.results_panel.set_report(None)
         self.dft_plot.clear()
         self.dft_plot.clear_selected_marker()
         self.statusBar().showMessage(f"Loaded {path}")
@@ -581,6 +628,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.engine.state.settings.show_light_curve_errors = self.light_curve_errors_check.isChecked()
         self.engine.state.settings.invert_y_axis = self.magnitude_axis_check.isChecked()
         self.engine.state.settings.show_tdfd_legend = self.tdfd_panel.legend_check.isChecked()
+        tdfd_options = self.tdfd_panel.options()
+        self.engine.state.settings.tdfd_source = tdfd_options.source
+        self.engine.state.settings.tdfd_auto_window = tdfd_options.auto_window
+        self.engine.state.settings.tdfd_window_points = int(tdfd_options.window_points or 0)
+        self.engine.state.settings.tdfd_step_points = int(tdfd_options.step_points or 0)
+        self.engine.state.settings.tdfd_selected_base_index = tdfd_options.selected_base_index
         self.engine.save_state()
 
     def _light_curve_options_changed(self) -> None:
@@ -789,6 +842,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._finish_thread()
         self._set_calculation_controls_enabled(True)
         self._current_fit = fit
+        if self.engine is not None and getattr(fit, "report", None) is not None:
+            self.engine.last_report = fit.report
         ready_message = "Frequencies refined" if getattr(fit, "used_native", False) else "Fit ready"
         if refreshed_periodogram and periodogram is not None:
             backend = "fwpeaks" if periodogram.used_native else "Python fallback"
@@ -830,6 +885,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.recalc_button.setEnabled(enabled)
         self.prewhitening_panel.fit_button.setEnabled(enabled)
         self.prewhitening_panel.refine_button.setEnabled(enabled)
+        self.tdfd_panel.run_button.setEnabled(enabled)
+        self.tdfd_panel.apply_button.setEnabled(enabled and self.tdfd_panel.division_frequency_combo.count() > 0)
+        self.tdfd_panel.clear_button.setEnabled(enabled)
 
     @QtCore.Slot(int, str)
     def _progress_changed(self, percent: int, message: str) -> None:
@@ -982,9 +1040,9 @@ class MainWindow(QtWidgets.QMainWindow):
     ) -> PhaseSeriesFit | None:
         show_raw = not self.hide_phase_check.isChecked()
         if show_raw:
-            plot.plot_points("phase", folded.phase, folded.flux, color="#1d4ed8", size=3, opacity=0.54)
+            plot.plot_points("phase", folded.phase, folded.flux, color="#1d4ed8", size=3, opacity=0.54, z=10)
             if self.phase_errors_check.isChecked():
-                plot.plot_error_bars("phase_errors", folded.phase, folded.flux, folded.error)
+                plot.plot_error_bars("phase_errors", folded.phase, folded.flux, folded.error, z=5)
             else:
                 plot.clear_item("phase_errors")
         else:
@@ -992,7 +1050,7 @@ class MainWindow(QtWidgets.QMainWindow):
             plot.clear_item("phase_errors")
         if self.smooth_check.isChecked():
             smoothed = boxcar_smooth(folded.flux, self.smooth_window_spin.value())
-            plot.plot_line("phase_smooth", folded.phase, smoothed, color="#f97316", width=3.4)
+            plot.plot_line("phase_smooth", folded.phase, smoothed, color="#f97316", width=3.4, z=20)
         else:
             plot.clear_item("phase_smooth")
         if show_fit is None:
@@ -1002,7 +1060,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if show_fit:
             fit = self._fourier_phase_fit(folded, harmonics)
             if fit is not None:
-                plot.plot_line("phase_fit", fit.phase, fit.flux, color="#dc2626", width=2.8)
+                plot.plot_line("phase_fit", fit.phase, fit.flux, color="#dc2626", width=2.8, z=30)
                 return fit
             else:
                 plot.clear_item("phase_fit")
@@ -1070,8 +1128,52 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.prewhitening_panel.set_frequency_model(self.engine.model)
         self._refresh_frequency_view_combo()
+        self._sync_frequency_selection_widgets()
+        self._refresh_results_panel()
+        self._refresh_tdfd_controls()
         self._refresh_markers()
         self._refresh_petersen()
+
+    def _refresh_results_panel(self) -> None:
+        if self.engine is None:
+            self.results_panel.set_report(None)
+            return
+        self.results_panel.set_report(self.engine.last_report)
+        self._sync_results_selection()
+
+    def _sync_results_selection(self) -> None:
+        if self._syncing_results_selection:
+            return
+        coefficients = self._accepted_selection_coefficients()
+        self._syncing_results_selection = True
+        try:
+            self.results_panel.select_coefficients(coefficients)
+        finally:
+            self._syncing_results_selection = False
+
+    def _refresh_tdfd_controls(self) -> None:
+        if self.engine is None:
+            self.tdfd_panel.configure_sources(has_residual=False, has_component=False)
+            self.tdfd_panel.set_families([])
+            return
+        families: list[tuple[int, str, float]] = []
+        for row in self.engine.model.rows():
+            base_index = self._base_index_from_coefficients(row["coefficients"])
+            if base_index is not None and row["enabled"] and row["frequency"] > 0:
+                families.append((base_index, str(row["label"]), float(row["frequency"])))
+        self.tdfd_panel.set_families(families)
+        has_component = self._selected_component_light_curve() is not None
+        self.tdfd_panel.configure_sources(has_residual=self.engine.residuals is not None, has_component=has_component)
+        preferred_source = self.engine.state.settings.tdfd_source
+        if preferred_source == "residual" and self.engine.residuals is not None:
+            self.tdfd_panel.source_combo.setCurrentIndex(self.tdfd_panel.source_combo.findData("residual"))
+        elif preferred_source == "component" and has_component:
+            self.tdfd_panel.source_combo.setCurrentIndex(self.tdfd_panel.source_combo.findData("component"))
+        if self.engine.tdfd_correction_stale_reason and self.engine.tdfd_result is None:
+            self.tdfd_panel.clear_result()
+            self.tdfd_panel.set_correction_status(f"TDFD correction disabled: {self.engine.tdfd_correction_stale_reason}")
+        elif self.engine.tdfd_correction_active:
+            self.tdfd_panel.set_correction_status(f"TDFD correction active: {self.engine.tdfd_correction_label}")
 
     def _refresh_markers(self) -> None:
         if self.engine is None:
@@ -1159,10 +1261,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.engine is None or self.engine.last_periodogram is None:
             return
         pg = self.engine.last_periodogram
-        idx = int(np.argmin(np.abs(pg.frequency - frequency)))
+        peak_frequency, peak_amplitude = self._nearest_periodogram_peak(pg, frequency)
         candidate = classify_peak(
-            pg.frequency[idx],
-            pg.amplitude[idx],
+            peak_frequency,
+            peak_amplitude,
             self.engine.model,
             self.engine.light_curve.baseline,
             start_frequency=float(np.min(pg.frequency)),
@@ -1170,6 +1272,28 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self._set_candidates_and_select([candidate, *self.engine.last_candidates[:20]], selected_candidate=candidate)
         self.statusBar().showMessage(f"{frequency_text(candidate.frequency)}: {candidate.kind}, {candidate.resolved}")
+
+    def _nearest_periodogram_peak(self, periodogram, clicked_frequency: float) -> tuple[float, float]:
+        peaks: list[tuple[float, float]] = []
+        for peak in getattr(periodogram, "peaks", ()):
+            try:
+                frequency = float(peak.get("frequency"))
+                amplitude = float(peak.get("amplitude"))
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if np.isfinite(frequency) and np.isfinite(amplitude):
+                peaks.append((frequency, amplitude))
+
+        frequencies = np.asarray(periodogram.frequency, dtype=float)
+        amplitudes = np.asarray(periodogram.amplitude, dtype=float)
+        if len(frequencies) >= 3:
+            peak_indexes = np.where((amplitudes[1:-1] >= amplitudes[:-2]) & (amplitudes[1:-1] >= amplitudes[2:]))[0] + 1
+            if peak_indexes.size:
+                peaks.extend((float(frequencies[index]), float(amplitudes[index])) for index in peak_indexes)
+        if peaks:
+            return min(peaks, key=lambda item: abs(item[0] - clicked_frequency))
+        nearest = int(np.argmin(np.abs(frequencies - clicked_frequency)))
+        return float(frequencies[nearest]), float(amplitudes[nearest])
 
     def _candidate_selected(self, candidate: FrequencyCandidate) -> None:
         self._select_candidate(candidate)
@@ -1201,6 +1325,18 @@ class MainWindow(QtWidgets.QMainWindow):
             status=row["kind"],
             base_index=self._base_index_from_coefficients(row["coefficients"]),
             coefficients=row["coefficients"],
+        )
+
+    def _results_row_selected(self, row) -> None:
+        if self._syncing_results_selection:
+            return
+        self._select_frequency(
+            row.frequency,
+            amplitude=row.amplitude,
+            label=row.label,
+            status=row.status,
+            base_index=self._base_index_from_coefficients(row.coefficients),
+            coefficients=row.coefficients,
         )
 
     def _base_index_from_coefficients(self, coefficients: tuple[int, ...]) -> int | None:
@@ -1239,6 +1375,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_marker_label = label or frequency_text(self.selected_frequency)
         self.selected_coefficients = coefficients
         if self.engine is not None:
+            self._sync_frequency_selection_widgets()
+            self._refresh_tdfd_controls()
             self._refresh_markers()
         else:
             self.dft_plot.set_selected_marker(self.selected_frequency, self.selected_marker_label)
@@ -1370,23 +1508,72 @@ class MainWindow(QtWidgets.QMainWindow):
         self.frequency_view_combo.clear()
         if self.engine is not None:
             for row in self.engine.model.rows():
-                if row["enabled"] and row["frequency"] > 0:
-                    base_index = self._base_index_from_coefficients(row["coefficients"])
+                base_index = self._base_index_from_coefficients(row["coefficients"])
+                if base_index is not None and row["frequency"] > 0:
                     self.frequency_view_combo.addItem(
                         f"{row['label']}  f={frequency_text(row['frequency'])}  P={period_text_from_frequency(row['frequency'])}",
-                        {"frequency": row["frequency"], "base_index": base_index},
+                        {
+                            "frequency": row["frequency"],
+                            "base_index": base_index,
+                            "coefficients": row["coefficients"],
+                            "term_index": row["index"],
+                            "label": row["label"],
+                        },
                     )
+        self.frequency_view_combo.setCurrentIndex(-1)
         self.frequency_view_combo.blockSignals(False)
 
     def _frequency_view_changed(self, index: int) -> None:
+        if self._syncing_frequency_selection:
+            return
         item = self.frequency_view_combo.itemData(index)
         if isinstance(item, dict) and item.get("frequency"):
             self._select_frequency(
                 float(item["frequency"]),
-                label=self.frequency_view_combo.itemText(index),
+                label=str(item.get("label") or self.frequency_view_combo.itemText(index)),
                 status="accepted",
                 base_index=item.get("base_index"),
+                coefficients=tuple(item.get("coefficients", ())),
             )
+
+    def _sync_frequency_selection_widgets(self) -> None:
+        if self.engine is None or self._syncing_frequency_selection:
+            return
+        self._syncing_frequency_selection = True
+        try:
+            coefficients = self._accepted_selection_coefficients()
+            if coefficients is None:
+                self.prewhitening_panel.select_term()
+            else:
+                self.prewhitening_panel.select_term(coefficients=coefficients)
+            combo_index = self._frequency_view_combo_index_for_coefficients(coefficients)
+            self.frequency_view_combo.blockSignals(True)
+            try:
+                self.frequency_view_combo.setCurrentIndex(combo_index)
+            finally:
+                self.frequency_view_combo.blockSignals(False)
+            self._sync_results_selection()
+        finally:
+            self._syncing_frequency_selection = False
+
+    def _accepted_selection_coefficients(self) -> tuple[int, ...] | None:
+        if self.engine is None or self.selected_frequency is None:
+            return None
+        if self.selected_coefficients is not None and len(self.selected_coefficients) == len(self.engine.model.bases):
+            return tuple(self.selected_coefficients)
+        if self.selected_base_index is not None and 0 <= self.selected_base_index < len(self.engine.model.bases):
+            return self.engine.model.identity_term(self.selected_base_index)
+        return None
+
+    def _frequency_view_combo_index_for_coefficients(self, coefficients: tuple[int, ...] | None) -> int:
+        base_index = self._base_index_from_coefficients(coefficients or ())
+        if base_index is None:
+            return -1
+        for index in range(self.frequency_view_combo.count()):
+            item = self.frequency_view_combo.itemData(index)
+            if isinstance(item, dict) and item.get("base_index") == base_index:
+                return index
+        return -1
 
     def _frequency_view_options_changed(self) -> None:
         frequency = self.selected_frequency
@@ -1403,9 +1590,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         period = self.phase_period_spin.value() or (1.0 / frequency)
         folded = self._fold_active_light_curve(lc, period)
-        self.frequency_lc_plot.plot_points("lc", lc.time, lc.flux, color="#1d4ed8", size=3, opacity=0.58)
+        self.frequency_lc_plot.plot_points("lc", lc.time, lc.flux, color="#1d4ed8", size=3, opacity=0.58, z=10)
         if self.phase_errors_check.isChecked():
-            self.frequency_lc_plot.plot_error_bars("lc_errors", lc.time, lc.flux, lc.error)
+            self.frequency_lc_plot.plot_error_bars("lc_errors", lc.time, lc.flux, lc.error, z=5)
         else:
             self.frequency_lc_plot.clear_item("lc_errors")
         harmonics = self._phase_fit_harmonics()
@@ -1432,7 +1619,7 @@ class MainWindow(QtWidgets.QMainWindow):
         time = np.asarray(light_curve.time, dtype=float)[valid]
         flux = np.asarray(fit_flux, dtype=float)[valid]
         order = np.argsort(time)
-        self.frequency_lc_plot.plot_line("lc_fit", time[order], flux[order], color="#dc2626", width=2.5)
+        self.frequency_lc_plot.plot_line("lc_fit", time[order], flux[order], color="#dc2626", width=2.5, z=30)
 
     def _add_independent(self, frequency: float) -> None:
         if self.engine is None:
@@ -1441,11 +1628,48 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_frequency_views()
         self.start_fit_and_dft()
 
+    def _add_independents(self, candidates) -> None:
+        if self.engine is None:
+            return
+        added = 0
+        for candidate in candidates:
+            frequency = float(getattr(candidate, "frequency", np.nan))
+            if not np.isfinite(frequency) or frequency <= 0:
+                continue
+            self.engine.add_independent(frequency)
+            added += 1
+        if added == 0:
+            self.statusBar().showMessage("No valid candidates selected")
+            return
+        self._refresh_frequency_views()
+        self.statusBar().showMessage(f"Added {added} independent frequencies")
+        self.start_fit_and_dft()
+
     def _add_candidate(self, candidate) -> None:
         if self.engine is None:
             return
         self.engine.add_combination(candidate.coefficients)
         self._refresh_frequency_views()
+        self.start_fit_and_dft()
+
+    def _add_candidates(self, candidates) -> None:
+        if self.engine is None:
+            return
+        added = 0
+        for candidate in candidates:
+            if candidate.kind == "independent" or not any(candidate.coefficients):
+                frequency = float(candidate.frequency)
+                if not np.isfinite(frequency) or frequency <= 0:
+                    continue
+                self.engine.add_independent(frequency)
+            else:
+                self.engine.add_combination(candidate.coefficients)
+            added += 1
+        if added == 0:
+            self.statusBar().showMessage("No valid candidates selected")
+            return
+        self._refresh_frequency_views()
+        self.statusBar().showMessage(f"Added {added} selected candidates")
         self.start_fit_and_dft()
 
     def _edit_base_frequency(self, base_index: int, frequency: float) -> None:
@@ -1561,6 +1785,16 @@ class MainWindow(QtWidgets.QMainWindow):
         path = self.engine.export_legacy()
         self.statusBar().showMessage(f"Exported {path}")
 
+    def _export_results_csv(self) -> None:
+        if self.engine is None:
+            return
+        default = self.engine.state.light_curve_path.with_suffix(".results.csv")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export results CSV", str(default), "CSV files (*.csv)")
+        if not path:
+            return
+        exported = self.results_panel.export_csv(path)
+        self.statusBar().showMessage(f"Exported results {exported}")
+
     def _detrend(self) -> None:
         if self.engine is None:
             return
@@ -1574,35 +1808,154 @@ class MainWindow(QtWidgets.QMainWindow):
     def _sigma_clip(self) -> None:
         if self.engine is None:
             return
-        light_curve = self.engine.residuals or self.engine.light_curve
-        result = sigma_clip_light_curve(light_curve, self.engine.state.settings.sigma)
-        if not len(result.rejected.time):
-            self.statusBar().showMessage("Sigma clip found no points to reject")
+        applied = False
+        while self.engine is not None:
+            source_light_curve = self.engine.residuals or self.engine.light_curve
+            result = sigma_clip_light_curve(source_light_curve, self.engine.state.settings.sigma)
+            dialog = SigmaClipDialog(source_light_curve, result, self, y_inverted=self.magnitude_axis_check.isChecked())
+            if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+                if applied:
+                    self._start_after_sigma_clip()
+                return
+            sigma_value = getattr(dialog, "sigma_value", lambda: self.engine.state.settings.sigma)
+            self.engine.state.settings.sigma = float(sigma_value())
+            reject_mask = np.asarray(dialog.selected_reject_mask(), dtype=bool)
+            continue_clipping = getattr(dialog, "result_mode", "close") == "continue"
+            if not self._apply_sigma_clip_mask(reject_mask, refit_for_preview=continue_clipping):
+                if continue_clipping:
+                    continue
+                return
+            applied = True
+            if continue_clipping:
+                continue
+            self._start_after_sigma_clip()
             return
-        dialog = SigmaClipDialog(light_curve, result, self, y_inverted=self.magnitude_axis_check.isChecked())
-        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
-            return
-        reject_mask = dialog.selected_reject_mask()
+
+    def _apply_sigma_clip_mask(self, reject_mask: np.ndarray, *, refit_for_preview: bool) -> bool:
+        if self.engine is None:
+            return False
+        reject_mask = np.asarray(reject_mask, dtype=bool)
+        if reject_mask.shape != (len(self.engine.light_curve.time),):
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Sigma clip failed",
+                "Sigma clipping source no longer matches the original light curve. Refit the model and try again.",
+            )
+            return False
         if not np.any(reject_mask):
             self.statusBar().showMessage("Sigma clip canceled: no points selected for rejection")
-            return
-        cleaned = light_curve.masked(~reject_mask)
-        self.engine.light_curve = cleaned
-        self.engine.residuals = cleaned
-        self._plot_light_curve(cleaned)
+            return False
+        keep_mask = ~reject_mask
+        if not np.any(keep_mask):
+            QtWidgets.QMessageBox.warning(self, "Sigma clip canceled", "Cannot reject all light-curve points.")
+            return False
+        self.engine.apply_observation_mask(keep_mask)
+        self._current_fit = None
+        self._current_periodogram_plot = None
+        self.prewhitening_panel.set_candidates([])
+        self.dft_plot.clear()
+        if refit_for_preview and self.engine.model.active_terms():
+            try:
+                fit = self.engine.fit_model()
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "Sigma clip refit failed", str(exc))
+                self._plot_light_curve(self.engine.light_curve)
+                self._refresh_frequency_views()
+                return False
+            self._current_fit = fit
+            self._plot_light_curve(fit.residuals)
+            self._sync_selected_frequency_after_fit()
+        else:
+            self._plot_light_curve(self.engine.light_curve)
+        self._refresh_frequency_views()
         self.statusBar().showMessage(f"Sigma clip removed {int(np.count_nonzero(reject_mask))} points")
-        self.start_dft()
+        return True
 
-    def _run_tdfd(self, bins: int) -> None:
+    def _start_after_sigma_clip(self) -> None:
         if self.engine is None:
             return
+        if self.engine.model.active_terms():
+            self.start_fit_and_dft()
+        else:
+            self.start_dft()
+
+    def _tdfd_source_light_curve(self, options: TdfdOptions) -> LightCurve:
+        if self.engine is None:
+            raise RuntimeError("No light curve loaded")
+        if options.source == "original":
+            return self.engine.light_curve
+        if options.source == "component":
+            component = self._selected_component_light_curve()
+            if component is None:
+                raise RuntimeError("Selected component is not available. Fit the model first or select another TDFD source.")
+            return component
+        return self.engine.residuals or self.engine.light_curve
+
+    def _calculate_tdfd_result(self, options: TdfdOptions):
+        if self.engine is None:
+            raise RuntimeError("No light curve loaded")
+        source = self._tdfd_source_light_curve(options)
+        return run_tdfd(source, self.engine.model, options=options)
+
+    def _run_tdfd(self) -> None:
+        if self.engine is None:
+            return
+        self._settings_changed()
+        options = self.tdfd_panel.options()
         try:
-            result = run_tdfd(self.engine.residuals or self.engine.light_curve, self.engine.model, bins)
+            result = self._calculate_tdfd_result(options)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "TDFD failed", str(exc))
             return
+        self.engine.tdfd_result = result
         self.tdfd_panel.set_result(result)
-        self.statusBar().showMessage("TDFD ready")
+        self.statusBar().showMessage(result.message)
+
+    def _apply_tdfd_correction(self) -> None:
+        if self.engine is None:
+            return
+        self._settings_changed()
+        options = self.tdfd_panel.options()
+        result = self.tdfd_panel.result()
+        if (
+            result is None
+            or result.options.source != options.source
+            or result.options.auto_window != options.auto_window
+            or int(result.options.window_points or 0) != int(options.window_points or 0)
+            or int(result.options.step_points or 0) != int(options.step_points or 0)
+            or result.selected_base_index != options.selected_base_index
+        ):
+            try:
+                result = self._calculate_tdfd_result(options)
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "TDFD correction failed", str(exc))
+                return
+            self.tdfd_panel.set_result(result)
+        if not result.correction_term_indexes:
+            self.statusBar().showMessage("TDFD correction canceled: no selected family terms")
+            return
+        corrected = self.engine.apply_tdfd_correction(result)
+        self._current_periodogram_plot = None
+        self.prewhitening_panel.set_candidates([])
+        self._plot_light_curve(corrected)
+        self._refresh_frequency_views()
+        self.tdfd_panel.set_correction_status(f"TDFD correction active: {self.engine.tdfd_correction_label}")
+        self.statusBar().showMessage(f"Applied {self.engine.tdfd_correction_label}; refreshing residual DFT")
+        self.start_dft()
+
+    def _clear_tdfd_correction(self) -> None:
+        if self.engine is None:
+            return
+        changed = self.engine.clear_tdfd_correction()
+        self._refresh_frequency_views()
+        self._plot_light_curve(self.engine.residuals or self.engine.light_curve)
+        if changed:
+            self.tdfd_panel.set_correction_status("TDFD correction cleared")
+            self.statusBar().showMessage("TDFD correction cleared; refreshing residual DFT")
+            self.start_dft()
+        else:
+            self.tdfd_panel.set_correction_status("TDFD: no active correction")
+            self.statusBar().showMessage("No active TDFD correction")
 
     def build_native_tools(self) -> None:
         try:

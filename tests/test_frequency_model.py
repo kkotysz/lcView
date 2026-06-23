@@ -91,6 +91,39 @@ def test_classify_peak_combination():
     assert rayleigh_resolution(100.0) == 0.005
 
 
+def test_classify_peak_can_limit_combination_label_bases():
+    model = FrequencyModel.empty()
+    for frequency in (1.0, 2.0, 2.98):
+        model.add_independent(frequency)
+
+    full = classify_peak(4.98, 0.2, model, baseline=1000.0, start_frequency=0.0, end_frequency=10.0)
+    limited = classify_peak(
+        4.98,
+        0.2,
+        model,
+        baseline=1000.0,
+        start_frequency=0.0,
+        end_frequency=10.0,
+        combination_base_indexes=(0, 1),
+    )
+    selected_late_bases = classify_peak(
+        4.98,
+        0.2,
+        model,
+        baseline=1000.0,
+        start_frequency=0.0,
+        end_frequency=10.0,
+        combination_base_indexes=(1, 2),
+    )
+
+    assert full.coefficients == (0, 1, 1)
+    assert full.label == "f2 + f3"
+    assert limited.kind == "independent"
+    assert limited.label == "new"
+    assert limited.coefficients == (0, 0, 0)
+    assert selected_late_bases.coefficients == (0, 1, 1)
+
+
 def test_fast_classification_matches_harmonics_two_and_simple_three_terms():
     harmonic_model = FrequencyModel.empty()
     harmonic_model.add_independent(1.5)

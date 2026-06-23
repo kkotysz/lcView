@@ -13,7 +13,7 @@ from lcview.core.prewhitening import PrewhiteningEngine
 from lcview.core.sigma_clip import sigma_clip_light_curve
 from lcview.core.session import SessionState
 from lcview.core.tdfd import TdfdOptions, run_tdfd
-from lcview.display import fixed_text, frequency_text, period_text_from_frequency
+from lcview.display import fixed_text, frequency_text, period_text_from_frequency, sig_text
 from .column_selection_dialog import ColumnSelectionDialog
 from .detrend_dialog import DetrendDialog
 from .plots import PlotPane
@@ -29,6 +29,12 @@ WINDOW_SCREEN_MARGIN = 40
 PHASE_TAB_TITLE = "Phase"
 DAILY_ALIAS_OFFSET = 1.0
 YEARLY_ALIAS_OFFSET = 1.0 / 365.25
+RESULT_EXPORT_FILTER_SUFFIXES = {
+    "CSV files (*.csv)": ".csv",
+    "TSV files (*.tsv)": ".tsv",
+    "LaTeX tables (*.tex)": ".tex",
+    "Text tables (*.txt)": ".txt",
+}
 
 
 class DftWorker(QtCore.QObject):
@@ -98,6 +104,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_amplitude: float | None = None
         self.selected_marker_label = ""
         self.selected_coefficients: tuple[int, ...] | None = None
+        self._show_selected_frequency_marker = True
+        self._selected_candidate_peaks: list[FrequencyCandidate] = []
         self._syncing_phase_controls = False
         self._phase_last_edited = "period"
         self._pending_phase_text: dict[str, str | None] = {"period": None, "frequency": None}
@@ -109,6 +117,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._syncing_frequency_phase_controls = False
         self._syncing_frequency_selection = False
         self._syncing_results_selection = False
+        self._shortcut_actions: dict[str, QtGui.QAction] = {}
 
         self._build_ui()
         self._set_initial_geometry()
@@ -119,10 +128,12 @@ class MainWindow(QtWidgets.QMainWindow):
         file_menu = self.menuBar().addMenu("File")
         tools_menu = self.menuBar().addMenu("Tools")
         open_action = QtGui.QAction("Open light curve", self)
+        open_action.setShortcut(QtGui.QKeySequence.StandardKey.Open)
         open_action.triggered.connect(self.open_file)
         export_action = QtGui.QAction("Export legacy files", self)
         export_action.triggered.connect(self._export)
         quit_action = QtGui.QAction("Quit", self)
+        quit_action.setShortcut(QtGui.QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
         build_action = QtGui.QAction("Build native tools", self)
         build_action.triggered.connect(self.build_native_tools)
@@ -183,6 +194,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress_label.setMaximumHeight(self.progress_label.fontMetrics().height() + 6)
         left_layout.addWidget(self.dft_progress)
         left_layout.addWidget(self.progress_label)
+        self.dft_hint_label = QtWidgets.QLabel("DFT guide: load a light curve to see Nyquist and grid advice.")
+        self.dft_hint_label.setWordWrap(True)
+        left_layout.addWidget(self.dft_hint_label)
         selection_group = QtWidgets.QGroupBox("Selected frequency")
         selection_layout = QtWidgets.QVBoxLayout(selection_group)
         selection_layout.setContentsMargins(8, 4, 8, 6)
@@ -297,6 +311,11 @@ class MainWindow(QtWidgets.QMainWindow):
         dft_view_layout = QtWidgets.QVBoxLayout(dft_view)
         dft_view_layout.setContentsMargins(0, 0, 0, 0)
         dft_controls = QtWidgets.QHBoxLayout()
+        self.dft_log_check = QtWidgets.QCheckBox("Log amplitude")
+        self.dft_log_check.setToolTip("Display the DFT amplitude axis on a logarithmic scale.")
+        self.dft_nyquist_check = QtWidgets.QCheckBox("Nyquist")
+        self.dft_nyquist_check.setChecked(True)
+        self.dft_nyquist_check.setToolTip("Show the effective Nyquist frequency estimated from the median cadence.")
         self.dft_snr5_check = QtWidgets.QCheckBox("5 S/N")
         self.dft_snr5_check.setChecked(True)
         self.dft_snr5_check.setToolTip("Show the global amplitude threshold corresponding to S/N=5.")
@@ -311,6 +330,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dft_yearly_aliases_check = QtWidgets.QCheckBox("Yearly aliases")
         self.dft_yearly_aliases_check.setToolTip("Show +/- 1/365.25 1/d aliases for accepted and selected frequencies.")
         for checkbox in (
+            self.dft_log_check,
+            self.dft_nyquist_check,
             self.dft_snr5_check,
             self.dft_accepted_markers_check,
             self.dft_peak_markers_check,
@@ -435,6 +456,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs.currentChanged.connect(self._active_tab_changed)
         self.light_curve_errors_check.stateChanged.connect(lambda _: self._light_curve_options_changed())
         self.magnitude_axis_check.stateChanged.connect(lambda _: self._magnitude_axis_changed())
+        self.dft_log_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.dft_nyquist_check.stateChanged.connect(lambda _: self._dft_options_changed())
         self.dft_snr5_check.stateChanged.connect(lambda _: self._dft_options_changed())
         self.dft_accepted_markers_check.stateChanged.connect(lambda _: self._dft_options_changed())
         self.dft_peak_markers_check.stateChanged.connect(lambda _: self._dft_options_changed())
@@ -472,6 +495,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dft_plot.clicked_x.connect(self._dft_clicked)
         self.prewhitening_panel.frequency_selected.connect(self._frequency_row_selected)
         self.prewhitening_panel.candidate_selected.connect(self._candidate_selected)
+        self.prewhitening_panel.candidate_selection_changed.connect(self._candidate_selection_changed)
         self.prewhitening_panel.add_independent_requested.connect(self._add_independent)
         self.prewhitening_panel.add_independents_requested.connect(self._add_independents)
         self.prewhitening_panel.add_candidate_requested.connect(self._add_candidate)
@@ -480,6 +504,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.prewhitening_panel.remove_term_requested.connect(self._remove_term)
         self.prewhitening_panel.clear_frequencies_requested.connect(self._clear_frequencies)
         self.prewhitening_panel.toggle_term_requested.connect(self._toggle_term)
+        self.prewhitening_panel.combination_base_indexes_changed.connect(self._combination_label_bases_changed)
         self.prewhitening_panel.fit_requested.connect(self.start_fit)
         self.prewhitening_panel.refine_requested.connect(self.start_refine_fit)
         self.prewhitening_panel.undo_requested.connect(self._undo)
@@ -495,6 +520,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.results_panel.export_requested.connect(self._export_results_csv)
         self._sync_frequency_phase_controls_from_main()
         self._active_tab_changed(self.tabs.currentIndex())
+        self._create_shortcuts()
 
     def _set_initial_geometry(self) -> None:
         screen = QtGui.QGuiApplication.primaryScreen()
@@ -510,6 +536,61 @@ class MainWindow(QtWidgets.QMainWindow):
         x = available.x() + max(0, (available.width() - width) // 2)
         y = available.y() + max(0, (available.height() - height) // 2)
         self.setGeometry(x, y, width, height)
+
+    def _create_shortcuts(self) -> None:
+        self._register_shortcut("calculate_dft", "Calculate DFT", "F5", self._trigger_start_dft)
+        self._register_shortcut("fit_model", "Fit model", "Ctrl+F", self._trigger_start_fit)
+        self._register_shortcut("fit_and_dft", "Fit and refresh DFT", "Ctrl+Shift+F", self._trigger_start_fit_and_dft)
+        self._register_shortcut("refine_frequencies", "Refine frequencies", "Ctrl+R", self._trigger_start_refine_fit)
+        self._register_shortcut(
+            "remove_selected_frequency",
+            "Remove selected accepted frequency",
+            "Delete",
+            self._trigger_remove_selected_frequency,
+        )
+
+    def _register_shortcut(self, name: str, text: str, shortcut: str, slot) -> None:
+        action = QtGui.QAction(text, self)
+        action.setShortcut(QtGui.QKeySequence(shortcut))
+        action.setShortcutContext(QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        action.triggered.connect(slot)
+        self.addAction(action)
+        self._shortcut_actions[name] = action
+
+    def _trigger_start_dft(self) -> None:
+        self.start_dft()
+
+    def _trigger_start_fit(self) -> None:
+        self.start_fit()
+
+    def _trigger_start_fit_and_dft(self) -> None:
+        self.start_fit_and_dft()
+
+    def _trigger_start_refine_fit(self) -> None:
+        self.start_refine_fit()
+
+    def _trigger_remove_selected_frequency(self) -> None:
+        if self._shortcut_focus_blocks_destructive_action():
+            return
+        if self.engine is None:
+            return
+        index = self.prewhitening_panel.selected_term_index()
+        if index is None:
+            self.statusBar().showMessage("No accepted frequency is selected")
+            return
+        self._remove_term(index)
+
+    def _shortcut_focus_blocks_destructive_action(self) -> bool:
+        widget = self.focusWidget()
+        if widget is None:
+            return False
+        if isinstance(widget, (QtWidgets.QLineEdit, QtWidgets.QPlainTextEdit, QtWidgets.QTextEdit, QtWidgets.QAbstractSpinBox)):
+            return True
+        if isinstance(widget, QtWidgets.QAbstractItemView):
+            state = getattr(widget, "state", None)
+            if callable(state):
+                return state() == QtWidgets.QAbstractItemView.State.EditingState
+        return False
 
     @QtCore.Slot(int)
     def _active_tab_changed(self, index: int) -> None:
@@ -535,6 +616,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._initial_dft_backend is not None:
             settings.dft_backend = self._initial_dft_backend
         self._set_dft_backend(settings.dft_backend)
+        self._set_checkbox_checked(self.dft_log_check, settings.show_dft_log_amplitude)
+        self._set_checkbox_checked(self.dft_nyquist_check, settings.show_dft_nyquist)
         self._set_checkbox_checked(self.dft_snr5_check, settings.show_dft_snr5)
         self._set_checkbox_checked(self.dft_accepted_markers_check, settings.show_dft_accepted_markers)
         self._set_checkbox_checked(self.dft_peak_markers_check, settings.show_dft_peak_markers)
@@ -547,6 +630,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._pending_column_table = None
         self._pending_column_selection = None
         self._apply_brightness_axis_direction()
+        self._apply_dft_plot_preferences()
+        self._refresh_dft_guidance()
         self.engine.save_state()
         self.start_spin.setValue(settings.start_frequency)
         self.end_spin.setValue(settings.end_frequency)
@@ -566,6 +651,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_amplitude = None
         self.selected_marker_label = ""
         self.selected_coefficients = None
+        self._show_selected_frequency_marker = True
+        self._selected_candidate_peaks = []
         self._current_periodogram_plot = None
         self._current_fit = None
         self.tdfd_panel.clear_result()
@@ -620,6 +707,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.engine.state.settings.end_frequency = self.end_spin.value()
         self.engine.state.settings.precision = self.precision_spin.value()
         self.engine.state.settings.dft_backend = self.dft_backend_combo.currentData() or "fwpeaks"
+        self.engine.state.settings.show_dft_log_amplitude = self.dft_log_check.isChecked()
+        self.engine.state.settings.show_dft_nyquist = self.dft_nyquist_check.isChecked()
         self.engine.state.settings.show_dft_snr5 = self.dft_snr5_check.isChecked()
         self.engine.state.settings.show_dft_accepted_markers = self.dft_accepted_markers_check.isChecked()
         self.engine.state.settings.show_dft_peak_markers = self.dft_peak_markers_check.isChecked()
@@ -635,6 +724,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.engine.state.settings.tdfd_step_points = int(tdfd_options.step_points or 0)
         self.engine.state.settings.tdfd_selected_base_index = tdfd_options.selected_base_index
         self.engine.save_state()
+        self._refresh_dft_guidance()
 
     def _light_curve_options_changed(self) -> None:
         self._settings_changed()
@@ -643,7 +733,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _dft_options_changed(self) -> None:
         self._settings_changed()
-        self._refresh_dft_overlays()
+        self._apply_dft_plot_preferences()
+        if self._current_periodogram_plot is not None:
+            self._plot_periodogram(self._current_periodogram_plot)
+        else:
+            self._refresh_dft_overlays()
 
     def _magnitude_axis_changed(self) -> None:
         self._settings_changed()
@@ -864,7 +958,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.statusBar().showMessage(status_message)
             return
 
-        self.prewhitening_panel.set_candidates([])
+        self._clear_candidates()
         self._refresh_markers()
         suffix = "Previous DFT is stale; click Calculate DFT to refresh peak candidates."
         if not fit.converged:
@@ -906,10 +1000,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _plot_periodogram(self, periodogram) -> None:
         self._current_periodogram_plot = periodogram
+        self._apply_dft_plot_preferences()
         self.dft_plot.plot_line(
             "dft",
             periodogram.frequency,
-            periodogram.amplitude,
+            self._dft_plot_amplitudes(periodogram.amplitude),
             color="#2563eb",
             width=1.5,
             title="DFT",
@@ -920,12 +1015,32 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_dft_overlays(self, periodogram=None) -> None:
         if periodogram is None:
             periodogram = self._current_periodogram_plot
+        nyquist_frequency = self._current_nyquist_frequency()
+        low, high = self._dft_frequency_bounds()
+        if (
+            periodogram is not None
+            and self.dft_nyquist_check.isChecked()
+            and nyquist_frequency is not None
+            and np.isfinite(nyquist_frequency)
+            and low <= nyquist_frequency <= high
+        ):
+            self.dft_plot.plot_vline(
+                "dft_nyquist",
+                nyquist_frequency,
+                color="#7c3aed",
+                width=1.4,
+                style="dash",
+                label="Nyquist",
+                opacity=0.9,
+            )
+        else:
+            self.dft_plot.clear_item("dft_nyquist")
         if periodogram is not None and self.dft_snr5_check.isChecked():
             noise_level = getattr(periodogram, "noise_level", None)
             if noise_level is not None and np.isfinite(noise_level) and noise_level > 0:
                 self.dft_plot.plot_hline(
                     "dft_snr5",
-                    5.0 * float(noise_level),
+                    self._dft_plot_level(5.0 * float(noise_level)),
                     color="#b45309",
                     width=1.4,
                     style="dash",
@@ -954,7 +1069,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.dft_plot.plot_points(
                     "dft_peaks",
                     np.asarray(peak_frequency, dtype=float),
-                    np.asarray(peak_amplitude, dtype=float),
+                    self._dft_plot_amplitudes(np.asarray(peak_amplitude, dtype=float)),
                     color="#0f766e",
                     size=4,
                     opacity=0.82,
@@ -965,6 +1080,50 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.dft_plot.clear_item("dft_peaks")
         self._refresh_markers()
+
+    def _apply_dft_plot_preferences(self) -> None:
+        self.dft_plot.set_log_mode(y=self.dft_log_check.isChecked())
+
+    def _dft_plot_amplitudes(self, values: np.ndarray) -> np.ndarray:
+        array = np.asarray(values, dtype=float)
+        if not self.dft_log_check.isChecked():
+            return array
+        finite = array[np.isfinite(array) & (array > 0)]
+        floor = np.finfo(float).tiny if finite.size == 0 else max(np.finfo(float).tiny, float(np.min(finite)) * 0.5)
+        return np.clip(array, floor, None)
+
+    def _dft_plot_level(self, value: float) -> float:
+        if not self.dft_log_check.isChecked():
+            return float(value)
+        return float(max(np.finfo(float).tiny, value))
+
+    def _current_nyquist_frequency(self) -> float | None:
+        if self.engine is None:
+            return None
+        return self.engine.light_curve.nyquist_frequency
+
+    def _refresh_dft_guidance(self) -> None:
+        if self.engine is None:
+            self.dft_hint_label.setText("DFT guide: load a light curve to see Nyquist and grid advice.")
+            return
+        guidance: list[str] = []
+        warnings: list[str] = []
+        nyquist = self._current_nyquist_frequency()
+        if nyquist is not None and np.isfinite(nyquist):
+            guidance.append(f"Nyquist ~ {sig_text(nyquist, digits=5)} 1/d")
+            if self.end_spin.value() > nyquist * 1.0001:
+                warnings.append(f"End f {sig_text(self.end_spin.value(), digits=5)} exceeds Nyquist")
+        else:
+            guidance.append("Nyquist unavailable for repeated timestamps")
+        if self.engine.light_curve.baseline > 0 and self.precision_spin.value() > 0:
+            step = 1.0 / (self.precision_spin.value() * self.engine.light_curve.baseline)
+            guidance.append(f"step ~ {sig_text(step, digits=5)} 1/d (Rayleigh/{sig_text(self.precision_spin.value(), digits=4)})")
+            if self.precision_spin.value() < 5.0:
+                warnings.append("Precision is coarse for peak inspection")
+        text = "DFT guide: " + "; ".join(guidance)
+        if warnings:
+            text += ". Warning: " + "; ".join(warnings) + "."
+        self.dft_hint_label.setText(text)
 
     def _sync_selected_frequency_after_fit(self) -> None:
         if self.engine is None or self.selected_frequency is None:
@@ -1126,7 +1285,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_frequency_views(self) -> None:
         if self.engine is None:
             return
-        self.prewhitening_panel.set_frequency_model(self.engine.model)
+        self.prewhitening_panel.set_frequency_model(
+            self.engine.model,
+            combination_base_indexes=self.engine.state.settings.combination_base_indexes,
+        )
         self._refresh_frequency_view_combo()
         self._sync_frequency_selection_widgets()
         self._refresh_results_panel()
@@ -1187,9 +1349,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._add_alias_markers(DAILY_ALIAS_OFFSET, "1d", "#0891b2", "dash")
         if self.dft_yearly_aliases_check.isChecked():
             self._add_alias_markers(YEARLY_ALIAS_OFFSET, "1y", "#7c3aed", "dot")
-        if self.selected_frequency is not None:
+        if self.selected_frequency is not None and self._show_selected_frequency_marker:
             label = self.selected_marker_label or frequency_text(self.selected_frequency)
             self.dft_plot.set_selected_marker(self.selected_frequency, label)
+        else:
+            self.dft_plot.clear_selected_marker()
+        self._refresh_selected_candidate_peak_markers()
 
     def _add_alias_markers(self, offset: float, label_suffix: str, color: str, style: str) -> None:
         low, high = self._dft_frequency_bounds()
@@ -1269,6 +1434,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.engine.light_curve.baseline,
             start_frequency=float(np.min(pg.frequency)),
             end_frequency=float(np.max(pg.frequency)),
+            combination_base_indexes=self.engine.state.settings.combination_base_indexes,
         )
         self._set_candidates_and_select([candidate, *self.engine.last_candidates[:20]], selected_candidate=candidate)
         self.statusBar().showMessage(f"{frequency_text(candidate.frequency)}: {candidate.kind}, {candidate.resolved}")
@@ -1296,7 +1462,18 @@ class MainWindow(QtWidgets.QMainWindow):
         return float(frequencies[nearest]), float(amplitudes[nearest])
 
     def _candidate_selected(self, candidate: FrequencyCandidate) -> None:
-        self._select_candidate(candidate)
+        selected = self.prewhitening_panel.selected_candidates(default_to_first=False)
+        if candidate not in selected:
+            selected = [candidate]
+        self._select_candidate(candidate, selected_candidates=selected)
+
+    def _candidate_selection_changed(self, candidates) -> None:
+        candidates = list(candidates or [])
+        if not candidates:
+            self._selected_candidate_peaks = []
+            self._refresh_markers()
+            return
+        self._select_candidate(candidates[0], selected_candidates=candidates)
 
     def _set_candidates_and_select(
         self,
@@ -1304,11 +1481,21 @@ class MainWindow(QtWidgets.QMainWindow):
         selected_candidate: FrequencyCandidate | None = None,
     ) -> FrequencyCandidate | None:
         selected = self.prewhitening_panel.set_candidates(candidates, selected_candidate=selected_candidate)
-        if selected is not None:
-            self._select_candidate(selected)
+        if selected is None:
+            self._selected_candidate_peaks = []
+            self._refresh_selected_candidate_peak_markers()
+            return None
+        selection = self.prewhitening_panel.selected_candidates(default_to_first=False) or [selected]
+        self._select_candidate(selected, selected_candidates=selection)
         return selected
 
-    def _select_candidate(self, candidate: FrequencyCandidate) -> None:
+    def _select_candidate(
+        self,
+        candidate: FrequencyCandidate,
+        *,
+        selected_candidates: list[FrequencyCandidate] | None = None,
+    ) -> None:
+        self._selected_candidate_peaks = list(selected_candidates or [candidate])
         self._select_frequency(
             candidate.frequency,
             amplitude=candidate.amplitude,
@@ -1316,7 +1503,79 @@ class MainWindow(QtWidgets.QMainWindow):
             status=f"{candidate.kind}, {candidate.resolved}",
             snr=candidate.snr,
             rayleigh=candidate.rayleigh,
+            show_selected_marker=False,
         )
+
+    def _refresh_selected_candidate_peak_markers(self) -> None:
+        points = []
+        for candidate in self._selected_candidate_peaks:
+            frequency = float(candidate.frequency)
+            amplitude = float(candidate.amplitude)
+            if np.isfinite(frequency) and np.isfinite(amplitude):
+                points.append((frequency, amplitude))
+        if not points:
+            self.dft_plot.clear_item("dft_selected_peaks")
+            return
+        frequency, amplitude = zip(*points)
+        self.dft_plot.plot_points(
+            "dft_selected_peaks",
+            np.asarray(frequency, dtype=float),
+            np.asarray(amplitude, dtype=float),
+            color="#dc2626",
+            size=8,
+            opacity=0.96,
+            pen_color="#7f1d1d",
+            z=30,
+        )
+
+    def _clear_candidates(self) -> None:
+        self.prewhitening_panel.set_candidates([])
+        self._selected_candidate_peaks = []
+        self._refresh_selected_candidate_peak_markers()
+
+    def _combination_label_bases_changed(self, indexes) -> None:
+        if self.engine is None:
+            return
+        previous = self.prewhitening_panel.selected_candidate()
+        self.engine.state.settings.combination_base_indexes = self._normalise_combination_base_indexes(indexes)
+        self.engine.save_state()
+        if self.engine.last_periodogram is None:
+            self.statusBar().showMessage("Combination label bases updated")
+            return
+        candidates = self.engine.refresh_candidates()
+        selected = self._matching_candidate(previous, candidates)
+        self._set_candidates_and_select(candidates, selected_candidate=selected)
+        self.statusBar().showMessage("Peak candidate labels refreshed")
+
+    def _normalise_combination_base_indexes(self, indexes) -> list[int] | None:
+        if self.engine is None or indexes is None:
+            return None
+        valid = set(range(len(self.engine.model.bases)))
+        selected: set[int] = set()
+        for value in indexes:
+            try:
+                index = int(value)
+            except (TypeError, ValueError):
+                continue
+            if index in valid:
+                selected.add(index)
+        if not valid or selected == valid:
+            return None
+        return sorted(selected)
+
+    @staticmethod
+    def _matching_candidate(
+        previous: FrequencyCandidate | None,
+        candidates: list[FrequencyCandidate],
+    ) -> FrequencyCandidate | None:
+        if previous is None:
+            return None
+        frequency = float(previous.frequency)
+        tolerance = max(1e-8, abs(frequency) * 1e-8)
+        for candidate in candidates:
+            if abs(float(candidate.frequency) - frequency) <= tolerance:
+                return candidate
+        return None
 
     def _frequency_row_selected(self, row: dict) -> None:
         self._select_frequency(
@@ -1366,6 +1625,7 @@ class MainWindow(QtWidgets.QMainWindow):
         rayleigh: float | None = None,
         base_index: int | None = None,
         coefficients: tuple[int, ...] | None = None,
+        show_selected_marker: bool = True,
     ) -> None:
         if frequency <= 0:
             return
@@ -1374,12 +1634,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_amplitude = amplitude
         self.selected_marker_label = label or frequency_text(self.selected_frequency)
         self.selected_coefficients = coefficients
+        self._show_selected_frequency_marker = bool(show_selected_marker)
+        if show_selected_marker:
+            self._selected_candidate_peaks = []
         if self.engine is not None:
             self._sync_frequency_selection_widgets()
             self._refresh_tdfd_controls()
             self._refresh_markers()
         else:
-            self.dft_plot.set_selected_marker(self.selected_frequency, self.selected_marker_label)
+            if self._show_selected_frequency_marker:
+                self.dft_plot.set_selected_marker(self.selected_frequency, self.selected_marker_label)
+            else:
+                self.dft_plot.clear_selected_marker()
+                self._refresh_selected_candidate_peak_markers()
         self._set_phase_values(period=1.0 / self.selected_frequency)
         self._update_selection_status(status=status, label=label, snr=snr, rayleigh=rayleigh)
         self._phase_current_period()
@@ -1757,7 +2024,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_fit = None
         self.selection_label.setText("No frequency selected")
         self.dft_plot.clear_selected_marker()
-        self.prewhitening_panel.set_candidates([])
+        self._clear_candidates()
         self._refresh_frequency_views()
         self._plot_light_curve(self.engine.light_curve)
         self.start_dft()
@@ -1789,10 +2056,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.engine is None:
             return
         default = self.engine.state.light_curve_path.with_suffix(".results.csv")
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export results CSV", str(default), "CSV files (*.csv)")
+        filters = ";;".join(RESULT_EXPORT_FILTER_SUFFIXES)
+        path, selected_filter = QtWidgets.QFileDialog.getSaveFileName(self, "Export results table", str(default), filters)
         if not path:
             return
-        exported = self.results_panel.export_csv(path)
+        export_path = Path(path)
+        if export_path.suffix == "":
+            export_path = export_path.with_suffix(RESULT_EXPORT_FILTER_SUFFIXES.get(selected_filter, ".csv"))
+        exported = self.results_panel.export_table(export_path)
         self.statusBar().showMessage(f"Exported results {exported}")
 
     def _detrend(self) -> None:
@@ -1852,7 +2123,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.engine.apply_observation_mask(keep_mask)
         self._current_fit = None
         self._current_periodogram_plot = None
-        self.prewhitening_panel.set_candidates([])
+        self._clear_candidates()
         self.dft_plot.clear()
         if refit_for_preview and self.engine.model.active_terms():
             try:
@@ -1936,7 +2207,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         corrected = self.engine.apply_tdfd_correction(result)
         self._current_periodogram_plot = None
-        self.prewhitening_panel.set_candidates([])
+        self._clear_candidates()
         self._plot_light_curve(corrected)
         self._refresh_frequency_views()
         self.tdfd_panel.set_correction_status(f"TDFD correction active: {self.engine.tdfd_correction_label}")

@@ -9,12 +9,32 @@ import json
 from .frequency_model import FrequencyModel
 
 
+def _combination_base_indexes_from_value(value) -> list[int] | None:
+    if value is None:
+        return None
+    try:
+        iterator = iter(value)
+    except TypeError:
+        return None
+    indexes: set[int] = set()
+    for item in iterator:
+        try:
+            index = int(item)
+        except (TypeError, ValueError):
+            continue
+        if index >= 0:
+            indexes.add(index)
+    return sorted(indexes)
+
+
 @dataclass
 class SessionSettings:
     start_frequency: float = 0.0
     end_frequency: float = 80.0
     precision: float = 10.0
     dft_backend: str = "fwpeaks"
+    show_dft_log_amplitude: bool = False
+    show_dft_nyquist: bool = True
     show_dft_snr5: bool = True
     show_dft_accepted_markers: bool = True
     show_dft_peak_markers: bool = True
@@ -34,13 +54,17 @@ class SessionSettings:
     tdfd_window_points: int = 0
     tdfd_step_points: int = 0
     tdfd_selected_base_index: int | None = None
+    combination_base_indexes: list[int] | None = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "SessionSettings":
         settings = cls()
         for key in settings.__dataclass_fields__:
             if key in data:
-                setattr(settings, key, data[key])
+                if key == "combination_base_indexes":
+                    settings.combination_base_indexes = _combination_base_indexes_from_value(data[key])
+                else:
+                    setattr(settings, key, data[key])
         return settings
 
     def to_dict(self) -> dict:
@@ -49,6 +73,8 @@ class SessionSettings:
             "end_frequency": self.end_frequency,
             "precision": self.precision,
             "dft_backend": self.dft_backend,
+            "show_dft_log_amplitude": self.show_dft_log_amplitude,
+            "show_dft_nyquist": self.show_dft_nyquist,
             "show_dft_snr5": self.show_dft_snr5,
             "show_dft_accepted_markers": self.show_dft_accepted_markers,
             "show_dft_peak_markers": self.show_dft_peak_markers,
@@ -68,6 +94,7 @@ class SessionSettings:
             "tdfd_window_points": self.tdfd_window_points,
             "tdfd_step_points": self.tdfd_step_points,
             "tdfd_selected_base_index": self.tdfd_selected_base_index,
+            "combination_base_indexes": _combination_base_indexes_from_value(self.combination_base_indexes),
         }
 
 

@@ -6,16 +6,100 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from lcview.core.combinations import FrequencyCandidate
 from lcview.core.frequency_model import FrequencyModel
+from lcview.display import frequency_text
 from .models import CandidateTableModel, FrequencyTableModel
 
 
 CANDIDATE_AMPLITUDE_COLUMN = 5
+CANDIDATE_LABEL_COLUMN = 2
 CANDIDATE_COLUMN_WIDTHS = [24, 34, 64, 48, 48, 48, 42, 48, 72]
+
+
+class CombinationBasesDialog(QtWidgets.QDialog):
+    def __init__(
+        self,
+        rows: list[dict],
+        selected_indexes: tuple[int, ...] | list[int] | None,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Combination label bases")
+        self.resize(360, 520)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        self.list_widget = QtWidgets.QListWidget()
+        self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        self.list_widget.setAlternatingRowColors(True)
+        layout.addWidget(self.list_widget, 1)
+
+        base_rows = self._base_rows(rows)
+        all_indexes = {base_index for base_index, _ in base_rows}
+        selected = set(all_indexes)
+        if selected_indexes is not None:
+            selected = set()
+            for value in selected_indexes:
+                try:
+                    index = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if index in all_indexes:
+                    selected.add(index)
+        for base_index, row in base_rows:
+            label = str(row["label"])
+            frequency = frequency_text(float(row["frequency"]))
+            item = QtWidgets.QListWidgetItem(f"{label}   f={frequency}")
+            item.setData(QtCore.Qt.ItemDataRole.UserRole, base_index)
+            item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(QtCore.Qt.CheckState.Checked if base_index in selected else QtCore.Qt.CheckState.Unchecked)
+            self.list_widget.addItem(item)
+
+        bulk_buttons = QtWidgets.QHBoxLayout()
+        self.select_all_button = QtWidgets.QPushButton("Select all")
+        self.deselect_all_button = QtWidgets.QPushButton("Deselect all")
+        bulk_buttons.addWidget(self.select_all_button)
+        bulk_buttons.addWidget(self.deselect_all_button)
+        layout.addLayout(bulk_buttons)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        layout.addWidget(buttons)
+
+        self.select_all_button.clicked.connect(lambda: self._set_all(QtCore.Qt.CheckState.Checked))
+        self.deselect_all_button.clicked.connect(lambda: self._set_all(QtCore.Qt.CheckState.Unchecked))
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+    def selected_indexes(self) -> tuple[int, ...]:
+        indexes: list[int] = []
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            if item.checkState() == QtCore.Qt.CheckState.Checked:
+                indexes.append(int(item.data(QtCore.Qt.ItemDataRole.UserRole)))
+        return tuple(sorted(indexes))
+
+    def _set_all(self, state: QtCore.Qt.CheckState) -> None:
+        for row in range(self.list_widget.count()):
+            self.list_widget.item(row).setCheckState(state)
+
+    @staticmethod
+    def _base_rows(rows: list[dict]) -> list[tuple[int, dict]]:
+        result: list[tuple[int, dict]] = []
+        for row in rows:
+            coefficients = tuple(row["coefficients"])
+            nonzero = [(index, value) for index, value in enumerate(coefficients) if value]
+            if len(nonzero) == 1 and nonzero[0][1] == 1:
+                result.append((nonzero[0][0], row))
+        return result
 
 
 class PrewhiteningPanel(QtWidgets.QWidget):
     frequency_selected = QtCore.Signal(object)
     candidate_selected = QtCore.Signal(object)
+    candidate_selection_changed = QtCore.Signal(object)
     add_independent_requested = QtCore.Signal(float)
     add_independents_requested = QtCore.Signal(object)
     add_candidate_requested = QtCore.Signal(object)
@@ -24,6 +108,7 @@ class PrewhiteningPanel(QtWidgets.QWidget):
     remove_term_requested = QtCore.Signal(int)
     clear_frequencies_requested = QtCore.Signal()
     toggle_term_requested = QtCore.Signal(int, bool)
+    combination_base_indexes_changed = QtCore.Signal(object)
     fit_requested = QtCore.Signal()
     refine_requested = QtCore.Signal()
     undo_requested = QtCore.Signal()
@@ -37,6 +122,7 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         super().__init__(parent)
         self.frequency_model = FrequencyTableModel()
         self.candidate_model = CandidateTableModel()
+        self.combination_base_indexes: tuple[int, ...] | None = None
         self.candidate_proxy = QtCore.QSortFilterProxyModel(self)
         self.candidate_proxy.setSourceModel(self.candidate_model)
         self.candidate_proxy.setSortRole(QtCore.Qt.ItemDataRole.UserRole)
@@ -62,10 +148,19 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         self.edit_button = QtWidgets.QPushButton("Edit")
         self.remove_button = QtWidgets.QPushButton("Remove")
         self.clear_all_button = QtWidgets.QPushButton("Clear all")
+        self.combination_bases_button = QtWidgets.QPushButton("Combination bases...")
         self.undo_button = QtWidgets.QPushButton("Undo")
         self.redo_button = QtWidgets.QPushButton("Redo")
         self.edit_button.setToolTip("Edit the selected base frequency. You can also double-click Frequency or Period.")
-        for button in [self.edit_button, self.remove_button, self.clear_all_button, self.undo_button, self.redo_button]:
+        self.combination_bases_button.setToolTip("Choose independent frequencies used when labeling peak candidates.")
+        for button in [
+            self.edit_button,
+            self.remove_button,
+            self.clear_all_button,
+            self.combination_bases_button,
+            self.undo_button,
+            self.redo_button,
+        ]:
             accepted_buttons.addWidget(button)
         layout.addLayout(accepted_buttons)
 
@@ -109,11 +204,13 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         self.edit_button.clicked.connect(self._edit_selected)
         self.remove_button.clicked.connect(self._remove_selected)
         self.clear_all_button.clicked.connect(self.clear_frequencies_requested)
+        self.combination_bases_button.clicked.connect(self._edit_combination_bases)
         self.frequency_model.term_toggled.connect(self.toggle_term_requested)
         self.frequency_model.base_frequency_edited.connect(lambda index, frequency: self.base_frequency_edited.emit(index, frequency))
         self.frequency_table.clicked.connect(self._frequency_clicked)
         self.frequency_table.selectionModel().currentRowChanged.connect(self._frequency_current_changed)
         self.candidate_table.clicked.connect(self._candidate_clicked)
+        self.candidate_table.selectionModel().selectionChanged.connect(self._candidate_selection_changed)
         self.add_independent_button.clicked.connect(self._add_independent_selected)
         self.add_candidate_button.clicked.connect(self._add_candidate_selected)
         self.candidate_table.doubleClicked.connect(lambda _: self._add_candidate_selected())
@@ -125,10 +222,17 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         self.detrend_button.clicked.connect(self.detrend_requested)
         self.sigma_button.clicked.connect(self.sigma_clip_requested)
         self.tdfd_button.clicked.connect(self.tdfd_requested)
+        self._update_combination_bases_button()
 
-    def set_frequency_model(self, model: FrequencyModel) -> None:
+    def set_frequency_model(
+        self,
+        model: FrequencyModel,
+        combination_base_indexes: tuple[int, ...] | list[int] | None = None,
+    ) -> None:
         self.frequency_model.set_frequency_model(model)
+        self.combination_base_indexes = self._normalise_combination_base_indexes(combination_base_indexes)
         self.frequency_table.resizeColumnsToContents()
+        self._update_combination_bases_button()
 
     def select_term(self, *, term_index: int | None = None, coefficients: tuple[int, ...] | None = None) -> bool:
         target_row = None
@@ -182,10 +286,10 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         candidates = self.selected_candidates()
         return candidates[0] if candidates else None
 
-    def selected_candidates(self) -> list[FrequencyCandidate]:
+    def selected_candidates(self, *, default_to_first: bool = True) -> list[FrequencyCandidate]:
         rows = self.candidate_table.selectionModel().selectedRows()
         if not rows:
-            if self.candidate_proxy.rowCount() == 0:
+            if not default_to_first or self.candidate_proxy.rowCount() == 0:
                 return []
             rows = [self.candidate_proxy.index(0, 0)]
         candidates: list[FrequencyCandidate] = []
@@ -240,6 +344,14 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         if self.frequency_model.flags(index) & QtCore.Qt.ItemFlag.ItemIsEditable:
             self.frequency_table.edit(index)
 
+    def _edit_combination_bases(self) -> None:
+        dialog = CombinationBasesDialog(self.frequency_model.rows, self.combination_base_indexes, self)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+        self.combination_base_indexes = self._normalise_combination_base_indexes(dialog.selected_indexes())
+        self._update_combination_bases_button()
+        self.combination_base_indexes_changed.emit(self.combination_base_indexes)
+
     def _frequency_clicked(self, item: QtCore.QModelIndex) -> None:
         self._emit_frequency_selected(item)
 
@@ -256,6 +368,9 @@ class PrewhiteningPanel(QtWidgets.QWidget):
             if source_index.isValid():
                 self.candidate_selected.emit(self.candidate_model.candidates[source_index.row()])
 
+    def _candidate_selection_changed(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection) -> None:
+        self.candidate_selection_changed.emit(self.selected_candidates(default_to_first=False))
+
     def _candidate_proxy_index(self, candidate: FrequencyCandidate) -> QtCore.QModelIndex:
         for row, existing in enumerate(self.candidate_model.candidates):
             if existing is candidate:
@@ -264,6 +379,43 @@ class PrewhiteningPanel(QtWidgets.QWidget):
             if existing == candidate:
                 return self.candidate_proxy.mapFromSource(self.candidate_model.index(row, 0))
         return QtCore.QModelIndex()
+
+    def _base_indexes(self) -> tuple[int, ...]:
+        indexes: list[int] = []
+        for row in self.frequency_model.rows:
+            coefficients = tuple(row["coefficients"])
+            nonzero = [(index, value) for index, value in enumerate(coefficients) if value]
+            if len(nonzero) == 1 and nonzero[0][1] == 1:
+                indexes.append(nonzero[0][0])
+        return tuple(sorted(set(indexes)))
+
+    def _normalise_combination_base_indexes(self, indexes) -> tuple[int, ...] | None:
+        all_indexes = set(self._base_indexes())
+        if not all_indexes or indexes is None:
+            return None
+        selected: set[int] = set()
+        for value in indexes:
+            try:
+                index = int(value)
+            except (TypeError, ValueError):
+                continue
+            if index in all_indexes:
+                selected.add(index)
+        if selected == all_indexes:
+            return None
+        return tuple(sorted(selected))
+
+    def _update_combination_bases_button(self) -> None:
+        base_indexes = self._base_indexes()
+        self.combination_bases_button.setEnabled(bool(base_indexes))
+        if not base_indexes:
+            self.combination_bases_button.setText("Combination bases...")
+        elif self.combination_base_indexes is None:
+            self.combination_bases_button.setText("Combination bases: all")
+        else:
+            self.combination_bases_button.setText(
+                f"Combination bases: {len(self.combination_base_indexes)}/{len(base_indexes)}"
+            )
 
     def _configure_candidate_table(self) -> None:
         font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
@@ -277,7 +429,7 @@ class PrewhiteningPanel(QtWidgets.QWidget):
         self.candidate_table.verticalHeader().setDefaultSectionSize(QtGui.QFontMetrics(font).height() + 6)
         self.candidate_table.setWordWrap(False)
         self.candidate_table.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
-        self.candidate_table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.candidate_table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.candidate_table.horizontalHeader().setStretchLastSection(False)
         self.candidate_table.horizontalHeader().setMinimumSectionSize(18)
         self._fit_candidate_columns()
@@ -285,4 +437,7 @@ class PrewhiteningPanel(QtWidgets.QWidget):
     def _fit_candidate_columns(self) -> None:
         self.candidate_table.resizeColumnsToContents()
         for column, width in enumerate(CANDIDATE_COLUMN_WIDTHS):
-            self.candidate_table.setColumnWidth(column, width)
+            if column == CANDIDATE_LABEL_COLUMN:
+                self.candidate_table.setColumnWidth(column, max(width, self.candidate_table.columnWidth(column)))
+            else:
+                self.candidate_table.setColumnWidth(column, width)

@@ -70,6 +70,46 @@ def _frequency_error(coefficients: tuple[int, ...], baseline: float) -> float | 
     return coeff_norm / baseline
 
 
+def _montgomery_frequency_error(
+    *,
+    amplitude: float | None,
+    residual_std: float | None,
+    baseline: float,
+    nobs: int,
+) -> float | None:
+    if amplitude is None or residual_std is None:
+        return None
+    if baseline <= 0 or nobs <= 0:
+        return None
+    amplitude_value = float(amplitude)
+    residual_value = float(residual_std)
+    if not math.isfinite(amplitude_value) or amplitude_value <= 0:
+        return None
+    if not math.isfinite(residual_value) or residual_value < 0:
+        return None
+    return float(math.sqrt(6.0) / (math.pi * baseline) * residual_value / (amplitude_value * math.sqrt(nobs)))
+
+
+def _propagated_frequency_error(
+    coefficients: tuple[int, ...],
+    *,
+    base_errors: dict[int, float],
+    fallback: float | None,
+) -> float | None:
+    nonzero = [(index, int(value)) for index, value in enumerate(coefficients) if int(value) != 0]
+    if not nonzero:
+        return None
+    terms: list[float] = []
+    for index, coefficient in nonzero:
+        sigma = base_errors.get(index, fallback)
+        if sigma is None or not math.isfinite(float(sigma)) or float(sigma) <= 0:
+            return fallback
+        terms.append((abs(coefficient) * float(sigma)) ** 2)
+    if not terms:
+        return fallback
+    return float(math.sqrt(sum(terms)))
+
+
 def _period_error(frequency: float, frequency_error: float | None) -> float | None:
     if frequency_error is None or frequency <= 0 or not math.isfinite(float(frequency)):
         return None
@@ -128,11 +168,37 @@ def build_frequency_report(light_curve: LightCurve, model: FrequencyModel, *, fi
     if active_terms:
         coef, covariance, residual_flux = _fit_active_terms(light_curve, active_terms, active_frequencies)
     baseline = light_curve.baseline if len(light_curve.time) else math.nan
+    residual_std = float(np.std(residual_flux)) if len(residual_flux) else None
+    fallback_frequency_error = _frequency_error((1,), baseline)
+    base_frequency_errors: dict[int, float] = {}
+    for row in rows:
+        coefficients = tuple(int(value) for value in row["coefficients"])
+        nonzero = [(index, value) for index, value in enumerate(coefficients) if value]
+        if len(nonzero) != 1 or nonzero[0][1] != 1:
+            continue
+        active_index = active_index_by_term.get(coefficients)
+        amplitude = None
+        if row["enabled"] and active_index is not None:
+            amplitude, _, _, _ = _term_values(coef, covariance, active_index)
+        sigma = _montgomery_frequency_error(
+            amplitude=amplitude,
+            residual_std=residual_std,
+            baseline=baseline,
+            nobs=len(light_curve.time),
+        )
+        if sigma is None:
+            sigma = fallback_frequency_error
+        if sigma is not None:
+            base_frequency_errors[nonzero[0][0]] = float(sigma)
     report_rows: list[FrequencyReportRow] = []
     for row in rows:
         coefficients = tuple(int(value) for value in row["coefficients"])
         frequency = float(row["frequency"])
-        freq_error = _frequency_error(coefficients, baseline)
+        freq_error = _propagated_frequency_error(
+            coefficients,
+            base_errors=base_frequency_errors,
+            fallback=fallback_frequency_error,
+        )
         period = _period(frequency)
         amplitude = None
         amplitude_error = None
@@ -166,6 +232,6 @@ def build_frequency_report(light_curve: LightCurve, model: FrequencyModel, *, fi
         nobs=len(light_curve.time),
         n_terms=len(rows),
         n_active_terms=len(active_terms),
-        sdev=float(np.std(residual_flux)) if len(residual_flux) else None,
+        sdev=residual_std,
         fit_source=fit_source,
     )

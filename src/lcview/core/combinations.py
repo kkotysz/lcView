@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from itertools import combinations, product
@@ -62,6 +63,24 @@ def _normalised_bounds(start_frequency: float | None, end_frequency: float | Non
     if start is not None and end is not None and start > end:
         start, end = end, start
     return start, end
+
+
+def _combination_bases(model: FrequencyModel, combination_base_indexes: Iterable[int] | None) -> tuple[float, ...]:
+    bases = tuple(float(value) for value in model.bases)
+    if combination_base_indexes is None:
+        return bases
+
+    selected: set[int] = set()
+    for value in combination_base_indexes:
+        try:
+            index = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= index < len(bases):
+            selected.add(index)
+    if len(selected) == len(bases):
+        return bases
+    return tuple(frequency if index in selected else 0.0 for index, frequency in enumerate(bases))
 
 
 def _in_frequency_range(frequency: float, start_frequency: float | None, end_frequency: float | None) -> bool:
@@ -181,6 +200,7 @@ def matching_combinations(
     *,
     start_frequency: float | None = None,
     end_frequency: float | None = None,
+    combination_base_indexes: Iterable[int] | None = None,
     max_harmonic: int = 60,
     n_two: int = 15,
     n_three: int = 10,
@@ -191,7 +211,7 @@ def matching_combinations(
         return []
     resolution = rayleigh_resolution(baseline)
     index = _combination_index(
-        tuple(float(value) for value in model.bases),
+        _combination_bases(model, combination_base_indexes),
         *_normalised_bounds(start_frequency, end_frequency),
         max_harmonic,
         n_two,
@@ -309,10 +329,11 @@ def classify_peak(
     snr: float | None = None,
     start_frequency: float | None = None,
     end_frequency: float | None = None,
+    combination_base_indexes: Iterable[int] | None = None,
 ) -> FrequencyCandidate:
     resolution = rayleigh_resolution(baseline)
     combination_index = _combination_index(
-        tuple(float(value) for value in model.bases),
+        _combination_bases(model, combination_base_indexes),
         *_normalised_bounds(start_frequency, end_frequency),
         60,
         15,
@@ -336,11 +357,12 @@ def candidates_from_peaks(
     *,
     start_frequency: float | None = None,
     end_frequency: float | None = None,
+    combination_base_indexes: Iterable[int] | None = None,
 ) -> list[FrequencyCandidate]:
     resolution = rayleigh_resolution(baseline)
     model_frequencies = _model_term_frequencies(model)
     combination_index = _combination_index(
-        tuple(float(value) for value in model.bases),
+        _combination_bases(model, combination_base_indexes),
         *_normalised_bounds(start_frequency, end_frequency),
         60,
         15,

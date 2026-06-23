@@ -8,7 +8,7 @@ from PySide6 import QtCore
 from lcview.core.combinations import FrequencyCandidate
 from lcview.core.frequency_model import FrequencyModel
 from lcview.core.results import FrequencyReport, FrequencyReportRow
-from lcview.display import fixed_text, frequency_text, period_text_from_frequency
+from lcview.display import fixed_text, frequency_text, period_text_from_frequency, sig_text
 
 
 COEFFICIENTS_ROLE = QtCore.Qt.ItemDataRole.UserRole + 100
@@ -317,6 +317,13 @@ class FrequencyReportTableModel(QtCore.QAbstractTableModel):
             lines.append("\t".join(self._display_value(row, col) for col in range(len(self.headers))))
         return "\n".join(lines)
 
+    def plain_text(self) -> str:
+        rows = [self.headers]
+        for row in self.rows:
+            rows.append([self._display_value(row, col) for col in range(len(self.headers))])
+        widths = [max(len(str(row[col])) for row in rows) for col in range(len(self.headers))]
+        return "\n".join("  ".join(str(value).ljust(widths[index]) for index, value in enumerate(row)) for row in rows)
+
     def raw_rows(self) -> list[list[str]]:
         result = [self.headers]
         for row in self.rows:
@@ -337,19 +344,19 @@ class FrequencyReportTableModel(QtCore.QAbstractTableModel):
         if col == 5:
             return frequency_text(row.frequency)
         if col == 6:
-            return fixed_text(row.frequency_error)
+            return sig_text(row.frequency_error, digits=6)
         if col == 7:
             return fixed_text(row.period)
         if col == 8:
-            return fixed_text(row.period_error)
+            return sig_text(row.period_error, digits=6)
         if col == 9:
             return fixed_text(row.amplitude)
         if col == 10:
-            return fixed_text(row.amplitude_error)
+            return sig_text(row.amplitude_error, digits=6)
         if col == 11:
             return fixed_text(row.phase_cycles)
         if col == 12:
-            return fixed_text(row.phase_error_cycles)
+            return sig_text(row.phase_error_cycles, digits=6)
         if col == 13:
             if self.report is not None and self.report.stale and row.enabled:
                 return "stale"

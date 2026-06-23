@@ -32,6 +32,8 @@ class PlotPane(QtWidgets.QWidget):
         self._markers: list[object] = []
         self._selected_marker: object | None = None
         self._legend: object | None = None
+        self._log_x = False
+        self._log_y = False
         self._y_inverted = False
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -63,6 +65,17 @@ class PlotPane(QtWidgets.QWidget):
         if self._plot is not None:
             self._plot.setLabel("left", left)
             self._plot.setLabel("bottom", bottom)
+
+    def set_log_mode(self, *, x: bool | None = None, y: bool | None = None) -> None:
+        if x is not None:
+            self._log_x = bool(x)
+        if y is not None:
+            self._log_y = bool(y)
+        if self._plot is not None:
+            self._plot.setLogMode(x=self._log_x, y=self._log_y)
+
+    def is_y_log(self) -> bool:
+        return self._log_y
 
     def set_y_inverted(self, inverted: bool) -> None:
         self._y_inverted = bool(inverted)
@@ -193,6 +206,36 @@ class PlotPane(QtWidgets.QWidget):
             self._plot.addItem(item)
         else:
             item.setValue(float(y))
+            item.setPen(pen)
+
+    def plot_vline(
+        self,
+        name: str,
+        x: float,
+        *,
+        color: str = "#7c3aed",
+        width: float = 1.4,
+        style: str = "dash",
+        label: str = "",
+        opacity: float = 0.95,
+    ) -> None:
+        if self._plot is None or not np.isfinite(x):
+            return
+        item = self._items.get(name)
+        pen = self._pen(color, width=width, style=style, opacity=opacity)
+        if item is None:
+            item = pg.InfiniteLine(
+                pos=float(x),
+                angle=90,
+                pen=pen,
+                label=label,
+                labelOpts={"position": 0.9, "color": color},
+            )
+            item.setZValue(2)
+            self._items[name] = item
+            self._plot.addItem(item)
+        else:
+            item.setValue(float(x))
             item.setPen(pen)
 
     def clear_item(self, name: str) -> None:

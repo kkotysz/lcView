@@ -24,7 +24,7 @@ class ResultsPanel(QtWidgets.QWidget):
         self.summary_label = QtWidgets.QLabel("Results: no fit report")
         self.summary_label.setWordWrap(True)
         self.copy_button = QtWidgets.QPushButton("Copy TSV")
-        self.export_button = QtWidgets.QPushButton("Export CSV")
+        self.export_button = QtWidgets.QPushButton("Export table")
         controls.addWidget(self.summary_label, 1)
         controls.addWidget(self.copy_button)
         controls.addWidget(self.export_button)
@@ -102,9 +102,46 @@ class ResultsPanel(QtWidgets.QWidget):
         writer.writerows(self.model.raw_rows())
         return stream.getvalue()
 
+    def tsv_text(self) -> str:
+        return self.model.tsv_text()
+
+    def plain_text(self) -> str:
+        return self.model.plain_text()
+
+    def latex_text(self) -> str:
+        rows = [self.model.headers]
+        rows.extend(
+            [self.model._display_value(row, col) for col in range(len(self.model.headers))]
+            for row in self.model.rows
+        )
+        spec = "".join("c" if index in {1, 2, 13} else "r" for index in range(len(self.model.headers)))
+        lines = [f"\\begin{{tabular}}{{{spec}}}", "\\hline"]
+        lines.append(" & ".join(self._latex_escape(str(value)) for value in rows[0]) + r" \\")
+        lines.append("\\hline")
+        for row in rows[1:]:
+            lines.append(" & ".join(self._latex_escape(str(value)) for value in row) + r" \\")
+        lines.extend(["\\hline", "\\end{tabular}"])
+        return "\n".join(lines)
+
     def export_csv(self, path: str | Path) -> Path:
         path = Path(path)
         path.write_text(self.csv_text())
+        return path
+
+    def export_table(self, path: str | Path, format_name: str | None = None) -> Path:
+        path = Path(path)
+        resolved_format = (format_name or path.suffix.lstrip(".") or "csv").strip().lower()
+        if resolved_format == "csv":
+            text = self.csv_text()
+        elif resolved_format == "tsv":
+            text = self.tsv_text()
+        elif resolved_format in {"tex", "latex"}:
+            text = self.latex_text()
+        elif resolved_format in {"txt", "text"}:
+            text = self.plain_text()
+        else:
+            raise ValueError(f"Unsupported export format: {resolved_format}")
+        path.write_text(text)
         return path
 
     def _current_row_changed(self, current: QtCore.QModelIndex, _previous: QtCore.QModelIndex) -> None:
@@ -119,6 +156,22 @@ class ResultsPanel(QtWidgets.QWidget):
         self.table.resizeColumnsToContents()
         for col, width in {0: 42, 1: 38, 2: 46, 3: 72, 4: 96, 13: 90}.items():
             self.table.setColumnWidth(col, max(width, self.table.columnWidth(col)))
+
+    @staticmethod
+    def _latex_escape(value: str) -> str:
+        replacements = {
+            "\\": r"\textbackslash{}",
+            "&": r"\&",
+            "%": r"\%",
+            "$": r"\$",
+            "#": r"\#",
+            "_": r"\_",
+            "{": r"\{",
+            "}": r"\}",
+            "~": r"\textasciitilde{}",
+            "^": r"\textasciicircum{}",
+        }
+        return "".join(replacements.get(char, char) for char in value)
 
     @staticmethod
     def _summary_text(report: FrequencyReport | None) -> str:

@@ -99,9 +99,40 @@ class PrewhiteningEngine:
         self.last_periodogram = None
         self.last_candidates = []
 
+    def _classify_periodogram_candidates(self, result: PeriodogramResult) -> list[FrequencyCandidate]:
+        settings = self.state.settings
+        return candidates_from_peaks(
+            result.peaks,
+            self.model,
+            self.light_curve.baseline,
+            start_frequency=settings.start_frequency,
+            end_frequency=settings.end_frequency,
+            combination_base_indexes=settings.combination_base_indexes,
+        )
+
+    def refresh_candidates(self) -> list[FrequencyCandidate]:
+        if self.last_periodogram is None:
+            self.last_candidates = []
+            return self.last_candidates
+        self.last_candidates = self._classify_periodogram_candidates(self.last_periodogram)
+        return self.last_candidates
+
     def _mark_report_stale(self, reason: str = "stale until next fit") -> None:
         if self.last_report is not None:
             self.last_report.mark_stale(reason)
+
+    def _remove_combination_base_index(self, removed_index: int) -> None:
+        indexes = self.state.settings.combination_base_indexes
+        if indexes is None:
+            return
+        adjusted: list[int] = []
+        for value in indexes:
+            index = int(value)
+            if index == removed_index:
+                continue
+            adjusted.append(index - 1 if index > removed_index else index)
+        remaining = sorted({index for index in adjusted if 0 <= index < len(self.model.bases)})
+        self.state.settings.combination_base_indexes = None if len(remaining) == len(self.model.bases) else remaining
 
     def _invalidate_tdfd_correction(self, reason: str) -> None:
         if self.tdfd_correction_active:
@@ -171,13 +202,7 @@ class PrewhiteningEngine:
         self.last_periodogram = result
         if progress_callback is not None:
             progress_callback(99, "Classifying peak candidates")
-        self.last_candidates = candidates_from_peaks(
-            result.peaks,
-            self.model,
-            self.light_curve.baseline,
-            start_frequency=settings.start_frequency,
-            end_frequency=settings.end_frequency,
-        )
+        self.last_candidates = self._classify_periodogram_candidates(result)
         if progress_callback is not None:
             progress_callback(99, "Peak candidates ready")
         return result
@@ -243,6 +268,7 @@ class PrewhiteningEngine:
             self.model.remove_term(index)
         else:
             self.model.remove_base(base_index)
+            self._remove_combination_base_index(base_index)
         self._mark_report_stale()
         self._invalidate_periodogram()
         self.save_state()
@@ -260,6 +286,7 @@ class PrewhiteningEngine:
         self._invalidate_tdfd_correction("Accepted frequencies changed")
         self.history.snapshot()
         self.model.clear()
+        self.state.settings.combination_base_indexes = None
         self.residuals = self.light_curve
         self._mark_report_stale()
         self._invalidate_periodogram()

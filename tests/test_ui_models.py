@@ -4,11 +4,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6 import QtCore, QtWidgets
 
-from lcview.core.combinations import classify_peak
+from lcview.core.combinations import FrequencyCandidate, classify_peak
 from lcview.core.frequency_model import FrequencyModel
 from lcview.core.results import FrequencyReport, FrequencyReportRow
 from lcview.ui.models import CandidateTableModel, FrequencyReportTableModel, FrequencyTableModel, kind_code, period_text
-from lcview.ui.prewhitening_panel import CANDIDATE_COLUMN_WIDTHS, PrewhiteningPanel
+from lcview.ui.prewhitening_panel import CANDIDATE_COLUMN_WIDTHS, CANDIDATE_LABEL_COLUMN, CombinationBasesDialog, PrewhiteningPanel
 
 
 def test_kind_codes_and_period_formatting():
@@ -72,6 +72,46 @@ def test_candidate_table_short_kind_and_low_status():
     assert "LOW" in table.data(table.index(0, 8), QtCore.Qt.DisplayRole)
 
 
+def test_combination_bases_dialog_selects_independent_base_indexes():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    model = FrequencyModel.empty()
+    model.add_independent(1.0)
+    model.add_independent(2.0)
+    model.add_combination((1, 1))
+    dialog = CombinationBasesDialog(model.rows(), selected_indexes=(0,))
+
+    assert dialog.selected_indexes() == (0,)
+
+    dialog.deselect_all_button.click()
+    assert dialog.selected_indexes() == ()
+
+    dialog.select_all_button.click()
+    assert dialog.selected_indexes() == (0, 1)
+    dialog.close()
+
+
+def test_prewhitening_panel_fits_long_candidate_label_column():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    candidate = FrequencyCandidate(
+        frequency=1.0,
+        amplitude=1.0,
+        snr=6.0,
+        kind="combination",
+        label="f1 + f2 + f3 + f4 + f5 + f6 + f7",
+        coefficients=(1, 1, 1, 1, 1, 1, 1),
+        delta=0.0,
+        score=0.0,
+        resolved="resolved",
+        rayleigh=0.001,
+    )
+    panel = PrewhiteningPanel()
+
+    panel.set_candidates([candidate])
+
+    assert panel.candidate_table.columnWidth(CANDIDATE_LABEL_COLUMN) > CANDIDATE_COLUMN_WIDTHS[CANDIDATE_LABEL_COLUMN]
+    panel.close()
+
+
 def test_frequency_report_table_formats_values_and_stale_status():
     report = FrequencyReport(
         rows=(
@@ -106,6 +146,7 @@ def test_frequency_report_table_formats_values_and_stale_status():
     assert table.data(table.index(0, 9), QtCore.Qt.DisplayRole) == "1.234"
     assert table.data(table.index(0, 13), QtCore.Qt.DisplayRole) == "stale"
     assert "Frequency" in table.tsv_text()
+    assert "Freq err" in table.plain_text()
 
 
 def test_prewhitening_panel_defaults_candidates_to_amplitude_sort():
@@ -123,7 +164,12 @@ def test_prewhitening_panel_defaults_candidates_to_amplitude_sort():
     table_model = panel.candidate_table.model()
     assert table_model.data(table_model.index(0, 5), QtCore.Qt.DisplayRole) == "1.500"
     assert panel.selected_candidate() == candidates[1]
-    assert [panel.candidate_table.columnWidth(i) for i in range(len(CANDIDATE_COLUMN_WIDTHS))] == CANDIDATE_COLUMN_WIDTHS
+    widths = [panel.candidate_table.columnWidth(i) for i in range(len(CANDIDATE_COLUMN_WIDTHS))]
+    for column, width in enumerate(CANDIDATE_COLUMN_WIDTHS):
+        if column == CANDIDATE_LABEL_COLUMN:
+            assert widths[column] >= width
+        else:
+            assert widths[column] == width
     panel.close()
 
 

@@ -184,7 +184,13 @@ def test_frequency_report_returns_errors_and_phase_cycles(tmp_path: Path):
     row = report.rows[0]
     assert row.kind == "independent"
     assert row.frequency == pytest.approx(1.5)
-    assert row.frequency_error == pytest.approx(1.0 / engine.light_curve.baseline)
+    expected_frequency_error = (
+        np.sqrt(6.0)
+        / (np.pi * engine.light_curve.baseline)
+        * float(report.sdev)
+        / (float(row.amplitude) * np.sqrt(report.nobs))
+    )
+    assert row.frequency_error == pytest.approx(expected_frequency_error)
     assert row.period_error == pytest.approx(row.frequency_error / row.frequency**2)
     assert row.amplitude == pytest.approx(amplitude, abs=0.01)
     assert row.amplitude_error is not None and row.amplitude_error > 0
@@ -212,8 +218,8 @@ def test_frequency_report_kinds_disabled_rows_and_propagated_rayleigh(tmp_path: 
     assert by_label["f1 + f2"].kind == "combination"
     assert by_label["f1 + f2"].status == "disabled"
     assert by_label["f1 + f2"].amplitude is None
-    assert by_label["2f1"].frequency_error == pytest.approx(2.0 / engine.light_curve.baseline)
-    combo_error = np.sqrt(2.0) / engine.light_curve.baseline
+    assert by_label["2f1"].frequency_error == pytest.approx(2.0 * float(by_label["f1"].frequency_error))
+    combo_error = np.hypot(float(by_label["f1"].frequency_error), float(by_label["f2"].frequency_error))
     assert by_label["f1 + f2"].frequency_error == pytest.approx(combo_error)
     assert report.n_terms == 4
     assert report.n_active_terms == 3

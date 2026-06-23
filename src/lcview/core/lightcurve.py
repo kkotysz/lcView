@@ -33,6 +33,23 @@ class LightCurve:
     def median_time(self) -> float:
         return float(np.nanmedian(self.time))
 
+    @property
+    def median_cadence(self) -> float | None:
+        if len(self.time) < 2:
+            return None
+        diffs = np.diff(np.sort(self.time))
+        finite = diffs[np.isfinite(diffs) & (diffs > 0)]
+        if finite.size == 0:
+            return None
+        return float(np.median(finite))
+
+    @property
+    def nyquist_frequency(self) -> float | None:
+        cadence = self.median_cadence
+        if cadence is None or cadence <= 0 or not np.isfinite(cadence):
+            return None
+        return float(0.5 / cadence)
+
     def sorted(self) -> "LightCurve":
         order = np.argsort(self.time)
         return LightCurve(self.time[order], self.flux[order], self.error[order], self.path)

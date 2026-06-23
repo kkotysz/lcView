@@ -86,6 +86,22 @@ def test_frequency_views_exposes_phase_controls_and_syncs_with_main_controls():
     window.close()
 
 
+def test_combination_base_normalisation_treats_none_as_all(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    window.engine.add_independent(1.0)
+    window.engine.add_independent(2.0)
+
+    assert window._normalise_combination_base_indexes(None) is None
+    assert window._normalise_combination_base_indexes((0, 1)) is None
+    assert window._normalise_combination_base_indexes((0,)) == [0]
+    assert window._normalise_combination_base_indexes(()) == []
+    window.close()
+
+
 def test_frequency_view_combo_lists_independent_terms_and_syncs_accepted_selection(tmp_path):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     lc_path = tmp_path / "sample.dat"
@@ -159,6 +175,12 @@ def test_results_tab_updates_after_fit_syncs_selection_and_exports(tmp_path):
     csv_path = tmp_path / "results.csv"
     window.results_panel.export_csv(csv_path)
     assert "Frequency" in csv_path.read_text()
+    latex_path = tmp_path / "results.tex"
+    window.results_panel.export_table(latex_path)
+    assert "\\begin{tabular}" in latex_path.read_text()
+    text_path = tmp_path / "results.txt"
+    window.results_panel.export_table(text_path)
+    assert "Frequency" in text_path.read_text()
 
     window.engine.add_combination((2,))
     window._refresh_frequency_views()
@@ -191,7 +213,8 @@ def test_dft_finished_selects_visible_candidate_after_amplitude_sort(tmp_path):
 
     assert window.selected_frequency == 2.0
     assert window.phase_period_spin.value() == 0.5
-    assert _selected_marker_value(window.dft_plot) == 2.0
+    assert window.dft_plot._selected_marker is None
+    assert "dft_selected_peaks" in window.dft_plot._items
     assert window.prewhitening_panel.selected_candidate() == candidates[1]
     window.close()
 
@@ -279,6 +302,38 @@ def test_load_file_with_existing_freq_starts_fit(tmp_path):
     window.load_file(lc_path)
 
     assert calls == ["fit"]
+    window.close()
+
+
+def test_stage_one_shortcuts_trigger_actions_and_remove_selected_frequency(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    calls = []
+    window.start_dft = lambda: calls.append("dft")
+    window.start_fit = lambda: calls.append("fit")
+    window.start_fit_and_dft = lambda: calls.append("fit+dft")
+    window.start_refine_fit = lambda: calls.append("refine")
+
+    window._shortcut_actions["calculate_dft"].trigger()
+    window._shortcut_actions["fit_model"].trigger()
+    window._shortcut_actions["fit_and_dft"].trigger()
+    window._shortcut_actions["refine_frequencies"].trigger()
+
+    assert calls == ["dft", "fit", "fit+dft", "refine"]
+    assert window._shortcut_actions["calculate_dft"].shortcut().toString() == "F5"
+
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    window.engine.add_independent(1.0)
+    window._refresh_frequency_views()
+    window.prewhitening_panel.frequency_table.selectRow(0)
+    removed = []
+    window._remove_term = lambda index: removed.append(index)
+
+    window._shortcut_actions["remove_selected_frequency"].trigger()
+
+    assert removed == [0]
     window.close()
 
 
@@ -604,14 +659,17 @@ def test_dft_finished_updates_status_and_percent(tmp_path):
 
 def test_dft_plot_draws_snr5_threshold_and_peak_markers(tmp_path):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    time = np.arange(0.0, 2.0, 0.2)
+    flux = np.sin(2.0 * np.pi * 0.5 * time)
+    error = np.full_like(time, 0.02)
     lc_path = tmp_path / "sample.dat"
-    lc_path.write_text(FIXTURE.read_text())
+    np.savetxt(lc_path, np.column_stack([time, flux, error]))
     window = MainWindow()
     window.engine = PrewhiteningEngine.from_file(lc_path)
     _skip_without_pyqtgraph(window.dft_plot)
     periodogram = PeriodogramResult(
-        frequency=np.array([1.0, 2.0, 3.0]),
-        amplitude=np.array([0.2, 1.0, 0.5]),
+        frequency=np.array([1.0, 2.0, 2.5, 3.0]),
+        amplitude=np.array([0.2, 1.0, 0.6, 0.5]),
         peaks=[{"frequency": 2.0, "amplitude": 1.0, "snr": 5.0}],
         used_native=True,
         noise_level=0.2,
@@ -619,15 +677,24 @@ def test_dft_plot_draws_snr5_threshold_and_peak_markers(tmp_path):
 
     window._plot_periodogram(periodogram)
 
+    assert "dft_nyquist" in window.dft_plot._items
+    nyquist_line = window.dft_plot._items["dft_nyquist"]
+    assert float(nyquist_line.value()) == pytest.approx(float(window.engine.light_curve.nyquist_frequency))
     assert "dft_snr5" in window.dft_plot._items
     snr_line = window.dft_plot._items["dft_snr5"]
     assert float(snr_line.value()) == pytest.approx(1.0)
     assert snr_line.pen.style() == QtCore.Qt.PenStyle.DashLine
     assert "dft_peaks" in window.dft_plot._items
+    assert not window.dft_plot.is_y_log()
+
+    window.dft_log_check.setChecked(True)
+    assert window.dft_plot.is_y_log()
 
     window.dft_snr5_check.setChecked(False)
     assert "dft" in window.dft_plot._items
     assert "dft_snr5" not in window.dft_plot._items
+    window.dft_nyquist_check.setChecked(False)
+    assert "dft_nyquist" not in window.dft_plot._items
     window.close()
 
 
@@ -660,6 +727,33 @@ def test_dft_overlay_toggles_do_not_change_selected_frequency(tmp_path):
     assert _selected_marker_value(window.dft_plot) == 2.0
     assert len(window.dft_plot._markers) == 0
     assert "dft_peaks" not in window.dft_plot._items
+    window.close()
+
+
+def test_candidate_selection_marks_peak_red_without_selected_line(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    _skip_without_pyqtgraph(window.dft_plot)
+    periodogram = PeriodogramResult(
+        frequency=np.array([1.0, 2.0, 3.0]),
+        amplitude=np.array([0.2, 0.8, 0.3]),
+        peaks=[{"frequency": 2.0, "amplitude": 0.8, "snr": 5.0}],
+        used_native=True,
+        noise_level=0.1,
+    )
+    candidate = classify_peak(2.0, 0.8, window.engine.model, window.engine.light_curve.baseline, snr=5.0)
+
+    window._plot_periodogram(periodogram)
+    window._set_candidates_and_select([candidate])
+
+    assert window.dft_plot._selected_marker is None
+    assert "dft_selected_peaks" in window.dft_plot._items
+    selected_peaks = window.dft_plot._items["dft_selected_peaks"]
+    assert np.asarray(selected_peaks.xData, dtype=float).tolist() == pytest.approx([2.0])
+    assert np.asarray(selected_peaks.yData, dtype=float).tolist() == pytest.approx([0.8])
     window.close()
 
 

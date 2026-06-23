@@ -27,12 +27,20 @@ To jest plan operacyjny:
   - rozszerzony eksport wynikow do `CSV`, `TSV`, `LaTeX` i `TXT`,
   - ulepszony model `frequency_error`.
 
+- **Etap 2 - Statystyka DFT**  
+  Zrealizowane:
+  - spectral window jako opcjonalny overlay,
+  - local noise estimation dla calego periodogramu,
+  - adaptive S/N dla klasyfikacji kandydatow,
+  - przelaczanie widoku amplitude / S/N spectrum,
+  - odswiezanie selekcji i markerow bez gubienia wybranego piku.
+
 ### Do zrobienia teraz
 
-- **Etap 2 - Statystyka DFT**
-  - spectral window,
-  - local noise estimation,
-  - adaptive S/N.
+- **Etap 3 - Lomb-Scargle**
+  - dodanie backendu `lombscargle`,
+  - integracja z obecnym wyborem backendu,
+  - spiecie z obecnym workflow wynikow i peak selection.
 
 ## Zasady realizacji
 
@@ -149,7 +157,7 @@ Bo daje szybka wartosc, male ryzyko i nie przebudowuje architektury.
 
 ## Etap 2 - Statystyka DFT
 
-**Status:** next
+**Status:** done
 
 ### Zakres
 
@@ -175,6 +183,8 @@ To jest jeden wspolny obszar: interpretacja widma DFT.
 - GUI jasno pokazuje, czy user patrzy na amplitude, S/N i jakie tlo jest uzyte.
 
 ## Etap 3 - Lomb-Scargle
+
+**Status:** next
 
 ### Zakres
 

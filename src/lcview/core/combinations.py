@@ -358,6 +358,7 @@ def candidates_from_peaks(
     start_frequency: float | None = None,
     end_frequency: float | None = None,
     combination_base_indexes: Iterable[int] | None = None,
+    snr_key: str = "snr",
 ) -> list[FrequencyCandidate]:
     resolution = rayleigh_resolution(baseline)
     model_frequencies = _model_term_frequencies(model)
@@ -374,7 +375,7 @@ def candidates_from_peaks(
             _candidate_from_peak(
                 frequency=float(peak["frequency"]),
                 amplitude=float(peak["amplitude"]),
-                snr=peak.get("snr"),
+                snr=peak.get(snr_key, peak.get("snr")),
                 model=model,
                 resolution=resolution,
                 model_frequencies=model_frequencies,

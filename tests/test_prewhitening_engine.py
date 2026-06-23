@@ -7,7 +7,7 @@ import pytest
 from lcview.core.lightcurve import read_light_curve
 from lcview.core import periodogram as periodogram_module
 from lcview.core import prewhitening as prewhitening_module
-from lcview.core.periodogram import PeriodogramResult, compute_periodogram
+from lcview.core.periodogram import PeriodogramResult, compute_periodogram, compute_spectral_window
 from lcview.core.prewhitening import PrewhiteningEngine
 from lcview.core.results import build_frequency_report
 from lcview.core.tdfd import TdfdResult
@@ -24,6 +24,9 @@ def test_periodogram_python_backend_when_explicit():
     assert result.peaks
     assert not result.used_native
     assert result.noise_level == pytest.approx(float(np.median(result.amplitude)))
+    assert result.local_noise is not None
+    assert len(result.local_noise) == len(result.amplitude)
+    assert result.peaks[0]["local_snr"] == pytest.approx(result.peaks[0]["snr"])
 
 
 def test_periodogram_noise_from_fwpeaks_snr_rows(tmp_path: Path):
@@ -62,6 +65,34 @@ def test_periodogram_python_backend_handles_zero_frequency():
     assert not result.used_native
     assert np.isfinite(result.amplitude).all()
     assert abs(result.best_frequency - 1.0) < 0.1
+
+
+def test_periodogram_result_snr_spectrum_uses_local_or_global_background():
+    result = PeriodogramResult(
+        frequency=np.array([1.0, 2.0]),
+        amplitude=np.array([2.0, 4.0]),
+        peaks=[],
+        used_native=False,
+        noise_level=0.5,
+        local_noise=np.array([0.5, 1.0]),
+    )
+
+    assert result.snr_spectrum(adaptive=False).tolist() == pytest.approx([4.0, 8.0])
+    assert result.snr_spectrum(adaptive=True).tolist() == pytest.approx([4.0, 4.0])
+    assert result.snr_at_frequency(2.0, adaptive=True) == pytest.approx(4.0)
+
+
+def test_compute_spectral_window_returns_normalized_overlay_grid():
+    lc = read_light_curve(FIXTURE)
+    frequency = np.linspace(0.5, 5.0, 120)
+
+    window_frequency, window_amplitude = compute_spectral_window(lc, frequency, max_points=40, chunk_size=16)
+
+    assert len(window_frequency) == len(window_amplitude)
+    assert len(window_frequency) <= 40
+    assert np.isfinite(window_amplitude).all()
+    assert np.all(window_amplitude >= 0)
+    assert float(np.max(window_amplitude)) <= 1.0 + 1e-6
 
 
 def test_periodogram_requires_fwpeaks_unless_python_is_explicit(monkeypatch):

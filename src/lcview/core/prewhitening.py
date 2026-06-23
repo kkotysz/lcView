@@ -108,6 +108,7 @@ class PrewhiteningEngine:
             start_frequency=settings.start_frequency,
             end_frequency=settings.end_frequency,
             combination_base_indexes=settings.combination_base_indexes,
+            snr_key="local_snr" if settings.use_dft_adaptive_snr else "global_snr",
         )
 
     def refresh_candidates(self) -> list[FrequencyCandidate]:

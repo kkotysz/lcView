@@ -35,6 +35,9 @@ class SessionSettings:
     dft_backend: str = "fwpeaks"
     show_dft_log_amplitude: bool = False
     show_dft_nyquist: bool = True
+    show_dft_snr_spectrum: bool = False
+    show_dft_spectral_window: bool = False
+    use_dft_adaptive_snr: bool = True
     show_dft_snr5: bool = True
     show_dft_accepted_markers: bool = True
     show_dft_peak_markers: bool = True
@@ -75,6 +78,9 @@ class SessionSettings:
             "dft_backend": self.dft_backend,
             "show_dft_log_amplitude": self.show_dft_log_amplitude,
             "show_dft_nyquist": self.show_dft_nyquist,
+            "show_dft_snr_spectrum": self.show_dft_snr_spectrum,
+            "show_dft_spectral_window": self.show_dft_spectral_window,
+            "use_dft_adaptive_snr": self.use_dft_adaptive_snr,
             "show_dft_snr5": self.show_dft_snr5,
             "show_dft_accepted_markers": self.show_dft_accepted_markers,
             "show_dft_peak_markers": self.show_dft_peak_markers,

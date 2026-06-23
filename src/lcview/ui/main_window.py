@@ -8,6 +8,7 @@ import numpy as np
 
 from lcview.core.combinations import FrequencyCandidate, classify_peak
 from lcview.core.lightcurve import LightCurve, LightCurveTable, infer_light_curve_columns, read_light_curve_table
+from lcview.core.periodogram import compute_spectral_window
 from lcview.core.phase import FoldedLightCurve, PhaseSeriesFit, boxcar_smooth, evaluate_sincos_series, fold_light_curve
 from lcview.core.prewhitening import PrewhiteningEngine
 from lcview.core.sigma_clip import sigma_clip_light_curve
@@ -111,6 +112,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._pending_phase_text: dict[str, str | None] = {"period": None, "frequency": None}
         self._current_light_curve_plot: LightCurve | None = None
         self._current_periodogram_plot = None
+        self._spectral_window_cache: tuple[np.ndarray, np.ndarray] | None = None
         self._current_fit = None
         self._pending_column_table: LightCurveTable | None = None
         self._pending_column_selection: tuple[int, int, int] | None = None
@@ -313,12 +315,19 @@ class MainWindow(QtWidgets.QMainWindow):
         dft_controls = QtWidgets.QHBoxLayout()
         self.dft_log_check = QtWidgets.QCheckBox("Log amplitude")
         self.dft_log_check.setToolTip("Display the DFT amplitude axis on a logarithmic scale.")
+        self.dft_snr_spectrum_check = QtWidgets.QCheckBox("S/N spectrum")
+        self.dft_snr_spectrum_check.setToolTip("Show the DFT as S/N instead of raw amplitude.")
+        self.dft_adaptive_snr_check = QtWidgets.QCheckBox("Adaptive S/N")
+        self.dft_adaptive_snr_check.setChecked(True)
+        self.dft_adaptive_snr_check.setToolTip("Use local noise estimates instead of one global background when computing S/N.")
+        self.dft_window_check = QtWidgets.QCheckBox("Window overlay")
+        self.dft_window_check.setToolTip("Overlay the spectral window, scaled to the current DFT view, to help identify aliases.")
         self.dft_nyquist_check = QtWidgets.QCheckBox("Nyquist")
         self.dft_nyquist_check.setChecked(True)
         self.dft_nyquist_check.setToolTip("Show the effective Nyquist frequency estimated from the median cadence.")
         self.dft_snr5_check = QtWidgets.QCheckBox("5 S/N")
         self.dft_snr5_check.setChecked(True)
-        self.dft_snr5_check.setToolTip("Show the global amplitude threshold corresponding to S/N=5.")
+        self.dft_snr5_check.setToolTip("Show the S/N=5 threshold using either the local or global background model.")
         self.dft_accepted_markers_check = QtWidgets.QCheckBox("Accepted markers")
         self.dft_accepted_markers_check.setChecked(True)
         self.dft_accepted_markers_check.setToolTip("Show accepted model frequencies on the DFT plot.")
@@ -331,6 +340,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dft_yearly_aliases_check.setToolTip("Show +/- 1/365.25 1/d aliases for accepted and selected frequencies.")
         for checkbox in (
             self.dft_log_check,
+            self.dft_snr_spectrum_check,
+            self.dft_adaptive_snr_check,
+            self.dft_window_check,
             self.dft_nyquist_check,
             self.dft_snr5_check,
             self.dft_accepted_markers_check,
@@ -457,6 +469,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.light_curve_errors_check.stateChanged.connect(lambda _: self._light_curve_options_changed())
         self.magnitude_axis_check.stateChanged.connect(lambda _: self._magnitude_axis_changed())
         self.dft_log_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.dft_snr_spectrum_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.dft_window_check.stateChanged.connect(lambda _: self._dft_options_changed())
+        self.dft_adaptive_snr_check.stateChanged.connect(lambda _: self._dft_statistics_changed())
         self.dft_nyquist_check.stateChanged.connect(lambda _: self._dft_options_changed())
         self.dft_snr5_check.stateChanged.connect(lambda _: self._dft_options_changed())
         self.dft_accepted_markers_check.stateChanged.connect(lambda _: self._dft_options_changed())
@@ -617,6 +632,9 @@ class MainWindow(QtWidgets.QMainWindow):
             settings.dft_backend = self._initial_dft_backend
         self._set_dft_backend(settings.dft_backend)
         self._set_checkbox_checked(self.dft_log_check, settings.show_dft_log_amplitude)
+        self._set_checkbox_checked(self.dft_snr_spectrum_check, settings.show_dft_snr_spectrum)
+        self._set_checkbox_checked(self.dft_adaptive_snr_check, settings.use_dft_adaptive_snr)
+        self._set_checkbox_checked(self.dft_window_check, settings.show_dft_spectral_window)
         self._set_checkbox_checked(self.dft_nyquist_check, settings.show_dft_nyquist)
         self._set_checkbox_checked(self.dft_snr5_check, settings.show_dft_snr5)
         self._set_checkbox_checked(self.dft_accepted_markers_check, settings.show_dft_accepted_markers)
@@ -654,6 +672,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._show_selected_frequency_marker = True
         self._selected_candidate_peaks = []
         self._current_periodogram_plot = None
+        self._spectral_window_cache = None
         self._current_fit = None
         self.tdfd_panel.clear_result()
         self.results_panel.set_report(None)
@@ -708,6 +727,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.engine.state.settings.precision = self.precision_spin.value()
         self.engine.state.settings.dft_backend = self.dft_backend_combo.currentData() or "fwpeaks"
         self.engine.state.settings.show_dft_log_amplitude = self.dft_log_check.isChecked()
+        self.engine.state.settings.show_dft_snr_spectrum = self.dft_snr_spectrum_check.isChecked()
+        self.engine.state.settings.show_dft_spectral_window = self.dft_window_check.isChecked()
+        self.engine.state.settings.use_dft_adaptive_snr = self.dft_adaptive_snr_check.isChecked()
         self.engine.state.settings.show_dft_nyquist = self.dft_nyquist_check.isChecked()
         self.engine.state.settings.show_dft_snr5 = self.dft_snr5_check.isChecked()
         self.engine.state.settings.show_dft_accepted_markers = self.dft_accepted_markers_check.isChecked()
@@ -733,6 +755,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _dft_options_changed(self) -> None:
         self._settings_changed()
+        self._apply_dft_plot_preferences()
+        if self._current_periodogram_plot is not None:
+            self._plot_periodogram(self._current_periodogram_plot)
+        else:
+            self._refresh_dft_overlays()
+
+    def _dft_statistics_changed(self) -> None:
+        self._settings_changed()
+        if self.engine is not None and self.engine.last_periodogram is not None:
+            self._refresh_candidates_from_periodogram()
         self._apply_dft_plot_preferences()
         if self._current_periodogram_plot is not None:
             self._plot_periodogram(self._current_periodogram_plot)
@@ -999,15 +1031,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lc_plot.auto_range()
 
     def _plot_periodogram(self, periodogram) -> None:
+        if periodogram is not self._current_periodogram_plot:
+            self._spectral_window_cache = None
         self._current_periodogram_plot = periodogram
         self._apply_dft_plot_preferences()
         self.dft_plot.plot_line(
             "dft",
             periodogram.frequency,
-            self._dft_plot_amplitudes(periodogram.amplitude),
+            self._dft_plot_amplitudes(self._periodogram_display_values(periodogram)),
             color="#2563eb",
             width=1.5,
-            title="DFT",
+            title=self._current_dft_view_label(),
         )
         self._refresh_dft_overlays(periodogram)
         self.dft_plot.auto_range()
@@ -1036,40 +1070,83 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.dft_plot.clear_item("dft_nyquist")
         if periodogram is not None and self.dft_snr5_check.isChecked():
-            noise_level = getattr(periodogram, "noise_level", None)
-            if noise_level is not None and np.isfinite(noise_level) and noise_level > 0:
+            if self.dft_snr_spectrum_check.isChecked():
+                self.dft_plot.clear_item("dft_snr5_curve")
                 self.dft_plot.plot_hline(
                     "dft_snr5",
-                    self._dft_plot_level(5.0 * float(noise_level)),
+                    self._dft_plot_level(5.0),
                     color="#b45309",
                     width=1.4,
                     style="dash",
-                    label="5 S/N",
+                    label="S/N = 5",
+                )
+            elif self.dft_adaptive_snr_check.isChecked() and periodogram.local_noise is not None:
+                self.dft_plot.clear_item("dft_snr5")
+                self.dft_plot.plot_line(
+                    "dft_snr5_curve",
+                    periodogram.frequency,
+                    self._dft_plot_amplitudes(5.0 * np.asarray(periodogram.local_noise, dtype=float)),
+                    color="#b45309",
+                    width=1.3,
+                    style="dash",
+                    title="5 x local noise",
+                    opacity=0.92,
                 )
             else:
-                self.dft_plot.clear_item("dft_snr5")
+                self.dft_plot.clear_item("dft_snr5_curve")
+                noise_level = getattr(periodogram, "noise_level", None)
+                if noise_level is not None and np.isfinite(noise_level) and noise_level > 0:
+                    self.dft_plot.plot_hline(
+                        "dft_snr5",
+                        self._dft_plot_level(5.0 * float(noise_level)),
+                        color="#b45309",
+                        width=1.4,
+                        style="dash",
+                        label="5 x global noise",
+                    )
+                else:
+                    self.dft_plot.clear_item("dft_snr5")
         else:
             self.dft_plot.clear_item("dft_snr5")
+            self.dft_plot.clear_item("dft_snr5_curve")
+
+        if periodogram is not None and self.dft_window_check.isChecked():
+            overlay = self._spectral_window_overlay(periodogram)
+            if overlay is not None:
+                window_frequency, window_amplitude = overlay
+                self.dft_plot.plot_line(
+                    "dft_window",
+                    window_frequency,
+                    self._dft_plot_amplitudes(window_amplitude),
+                    color="#6366f1",
+                    width=1.2,
+                    style="dot",
+                    title="Window (scaled)",
+                    opacity=0.85,
+                )
+            else:
+                self.dft_plot.clear_item("dft_window")
+        else:
+            self.dft_plot.clear_item("dft_window")
 
         if periodogram is not None and self.dft_peak_markers_check.isChecked():
             peak_frequency = []
-            peak_amplitude = []
+            peak_value = []
             for peak in periodogram.peaks:
                 frequency = peak.get("frequency")
-                amplitude = peak.get("amplitude")
                 try:
                     frequency = float(frequency)
-                    amplitude = float(amplitude)
                 except (TypeError, ValueError):
                     continue
-                if np.isfinite(frequency) and np.isfinite(amplitude):
+                value = self._periodogram_peak_value(periodogram, peak)
+                if np.isfinite(frequency) and value is not None and np.isfinite(value):
                     peak_frequency.append(frequency)
-                    peak_amplitude.append(amplitude)
+                    peak_value.append(float(value))
             if peak_frequency:
                 self.dft_plot.plot_points(
                     "dft_peaks",
                     np.asarray(peak_frequency, dtype=float),
-                    self._dft_plot_amplitudes(np.asarray(peak_amplitude, dtype=float)),
+                    self._dft_plot_amplitudes(np.asarray(peak_value, dtype=float)),
                     color="#0f766e",
                     size=4,
                     opacity=0.82,
@@ -1082,6 +1159,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_markers()
 
     def _apply_dft_plot_preferences(self) -> None:
+        self.dft_plot.set_labels("S/N" if self.dft_snr_spectrum_check.isChecked() else "Amplitude", "Frequency")
         self.dft_plot.set_log_mode(y=self.dft_log_check.isChecked())
 
     def _dft_plot_amplitudes(self, values: np.ndarray) -> np.ndarray:
@@ -1102,12 +1180,59 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
         return self.engine.light_curve.nyquist_frequency
 
+    def _periodogram_display_values(self, periodogram) -> np.ndarray:
+        if self.dft_snr_spectrum_check.isChecked():
+            snr_values = periodogram.snr_spectrum(adaptive=self.dft_adaptive_snr_check.isChecked())
+            if snr_values is not None:
+                return np.asarray(snr_values, dtype=float)
+        return np.asarray(periodogram.amplitude, dtype=float)
+
+    def _periodogram_peak_value(self, periodogram, peak: dict) -> float | None:
+        if self.dft_snr_spectrum_check.isChecked():
+            key = "local_snr" if self.dft_adaptive_snr_check.isChecked() else "global_snr"
+            try:
+                value = float(peak.get(key, peak.get("snr")))
+            except (TypeError, ValueError):
+                return None
+            return value if np.isfinite(value) else None
+        try:
+            value = float(peak.get("amplitude"))
+        except (TypeError, ValueError):
+            return None
+        return value if np.isfinite(value) else None
+
+    def _current_dft_view_label(self) -> str:
+        return "S/N spectrum" if self.dft_snr_spectrum_check.isChecked() else "amplitude"
+
+    def _current_dft_background_label(self) -> str:
+        return "local median" if self.dft_adaptive_snr_check.isChecked() else "global noise"
+
+    def _current_snr_label(self) -> str:
+        return "S/N (local)" if self.dft_adaptive_snr_check.isChecked() else "S/N (global)"
+
+    def _spectral_window_overlay(self, periodogram) -> tuple[np.ndarray, np.ndarray] | None:
+        if self.engine is None:
+            return None
+        if self._spectral_window_cache is None:
+            self._spectral_window_cache = compute_spectral_window(self.engine.light_curve, periodogram.frequency)
+        frequency, window = self._spectral_window_cache
+        if len(frequency) == 0 or len(window) == 0:
+            return None
+        display_values = self._periodogram_display_values(periodogram)
+        finite = np.asarray(display_values, dtype=float)
+        finite = finite[np.isfinite(finite) & (finite > 0)]
+        if finite.size == 0:
+            return None
+        return np.asarray(frequency, dtype=float), np.asarray(window, dtype=float) * float(np.max(finite)) * 0.85
+
     def _refresh_dft_guidance(self) -> None:
         if self.engine is None:
             self.dft_hint_label.setText("DFT guide: load a light curve to see Nyquist and grid advice.")
             return
         guidance: list[str] = []
         warnings: list[str] = []
+        guidance.append(f"view {self._current_dft_view_label().lower()}")
+        guidance.append(f"background {self._current_dft_background_label()}")
         nyquist = self._current_nyquist_frequency()
         if nyquist is not None and np.isfinite(nyquist):
             guidance.append(f"Nyquist ~ {sig_text(nyquist, digits=5)} 1/d")
@@ -1124,6 +1249,21 @@ class MainWindow(QtWidgets.QMainWindow):
         if warnings:
             text += ". Warning: " + "; ".join(warnings) + "."
         self.dft_hint_label.setText(text)
+
+    def _refresh_candidates_from_periodogram(self) -> None:
+        if self.engine is None or self.engine.last_periodogram is None:
+            return
+        previous_candidates = self.prewhitening_panel.selected_candidates(default_to_first=False)
+        candidates = self.engine.refresh_candidates()
+        if previous_candidates:
+            selected_candidate = self._matching_candidate(previous_candidates[0], candidates)
+            self._set_candidates_and_select(candidates, selected_candidate=selected_candidate)
+            return
+        self.prewhitening_panel.candidate_model.set_candidates(candidates)
+        self.prewhitening_panel.candidate_proxy.sort(5, QtCore.Qt.SortOrder.DescendingOrder)
+        self.prewhitening_panel._fit_candidate_columns()
+        self._selected_candidate_peaks = []
+        self._refresh_selected_candidate_peak_markers()
 
     def _sync_selected_frequency_after_fit(self) -> None:
         if self.engine is None or self.selected_frequency is None:
@@ -1427,11 +1567,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         pg = self.engine.last_periodogram
         peak_frequency, peak_amplitude = self._nearest_periodogram_peak(pg, frequency)
+        peak_snr = pg.snr_at_frequency(peak_frequency, adaptive=self.dft_adaptive_snr_check.isChecked())
         candidate = classify_peak(
             peak_frequency,
             peak_amplitude,
             self.engine.model,
             self.engine.light_curve.baseline,
+            snr=peak_snr,
             start_frequency=float(np.min(pg.frequency)),
             end_frequency=float(np.max(pg.frequency)),
             combination_base_indexes=self.engine.state.settings.combination_base_indexes,
@@ -1510,9 +1652,9 @@ class MainWindow(QtWidgets.QMainWindow):
         points = []
         for candidate in self._selected_candidate_peaks:
             frequency = float(candidate.frequency)
-            amplitude = float(candidate.amplitude)
-            if np.isfinite(frequency) and np.isfinite(amplitude):
-                points.append((frequency, amplitude))
+            value = float(candidate.snr) if self.dft_snr_spectrum_check.isChecked() and candidate.snr is not None else float(candidate.amplitude)
+            if np.isfinite(frequency) and np.isfinite(value):
+                points.append((frequency, value))
         if not points:
             self.dft_plot.clear_item("dft_selected_peaks")
             return
@@ -1571,7 +1713,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if previous is None:
             return None
         frequency = float(previous.frequency)
-        tolerance = max(1e-8, abs(frequency) * 1e-8)
+        tolerance = max(1e-8, getattr(previous, "rayleigh", 0.0), abs(frequency) * 1e-8)
+        target_coefficients = tuple(previous.coefficients)
+        for candidate in candidates:
+            if tuple(candidate.coefficients) == target_coefficients and abs(float(candidate.frequency) - frequency) <= tolerance:
+                return candidate
         for candidate in candidates:
             if abs(float(candidate.frequency) - frequency) <= tolerance:
                 return candidate
@@ -1667,7 +1813,8 @@ class MainWindow(QtWidgets.QMainWindow):
         period = 1.0 / self.selected_frequency
         amp = "" if self.selected_amplitude is None else f"\nAmplitude: {fixed_text(self.selected_amplitude)}"
         amp_status = "" if self.selected_amplitude is None else f", amp {fixed_text(self.selected_amplitude)}"
-        snr_text = "" if snr is None else f"\nS/N: {fixed_text(snr)}"
+        snr_label = self._current_snr_label()
+        snr_text = "" if snr is None else f"\n{snr_label}: {fixed_text(snr)}"
         rayleigh_text = "" if rayleigh is None else f"\nRayleigh: {fixed_text(rayleigh)}"
         detail = f", {label}" if label else ""
         extra = f", {status}" if status else ""

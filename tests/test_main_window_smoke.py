@@ -698,6 +698,69 @@ def test_dft_plot_draws_snr5_threshold_and_peak_markers(tmp_path):
     window.close()
 
 
+def test_dft_can_show_snr_spectrum_and_window_overlay(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    time = np.arange(0.0, 3.0, 0.25)
+    flux = np.sin(2.0 * np.pi * 0.5 * time)
+    error = np.full_like(time, 0.02)
+    lc_path = tmp_path / "sample.dat"
+    np.savetxt(lc_path, np.column_stack([time, flux, error]))
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    _skip_without_pyqtgraph(window.dft_plot)
+    periodogram = PeriodogramResult(
+        frequency=np.array([0.5, 1.0, 1.5, 2.0, 2.5]),
+        amplitude=np.array([0.2, 0.3, 1.0, 0.6, 0.2]),
+        peaks=[{"frequency": 1.5, "amplitude": 1.0, "snr": 10.0, "local_snr": 10.0, "global_snr": 5.0}],
+        used_native=True,
+        noise_level=0.2,
+        local_noise=np.array([0.1, 0.1, 0.1, 0.15, 0.18]),
+    )
+
+    window._plot_periodogram(periodogram)
+    window.dft_window_check.setChecked(True)
+    window.dft_snr_spectrum_check.setChecked(True)
+
+    assert "dft_window" in window.dft_plot._items
+    assert "dft_snr5" in window.dft_plot._items
+    assert float(window.dft_plot._items["dft_snr5"].value()) == pytest.approx(5.0)
+    assert "view s/n spectrum" in window.dft_hint_label.text().lower()
+    assert "background local median" in window.dft_hint_label.text().lower()
+    window.close()
+
+
+def test_dft_adaptive_snr_toggle_refreshes_candidate_snr_without_changing_selection(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    lc_path = tmp_path / "sample.dat"
+    lc_path.write_text(FIXTURE.read_text())
+    window = MainWindow()
+    window.engine = PrewhiteningEngine.from_file(lc_path)
+    _skip_without_pyqtgraph(window.dft_plot)
+    periodogram = PeriodogramResult(
+        frequency=np.array([1.0, 2.0, 3.0]),
+        amplitude=np.array([0.2, 0.8, 0.3]),
+        peaks=[{"frequency": 2.0, "amplitude": 0.8, "snr": 8.0, "local_snr": 8.0, "global_snr": 4.0}],
+        used_native=True,
+        noise_level=0.2,
+        local_noise=np.array([0.2, 0.1, 0.2]),
+    )
+    window.engine.last_periodogram = periodogram
+    candidates = window.engine.refresh_candidates()
+    window._plot_periodogram(periodogram)
+    window._set_candidates_and_select(candidates)
+
+    assert window.selected_frequency == pytest.approx(2.0)
+    assert window.prewhitening_panel.selected_candidate().snr == pytest.approx(8.0)
+
+    window.dft_adaptive_snr_check.setChecked(False)
+    app.processEvents()
+
+    assert window.selected_frequency == pytest.approx(2.0)
+    assert window.prewhitening_panel.selected_candidate().snr == pytest.approx(4.0)
+    assert "S/N (global)" in window.selection_label.text()
+    window.close()
+
+
 def test_dft_overlay_toggles_do_not_change_selected_frequency(tmp_path):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     lc_path = tmp_path / "sample.dat"

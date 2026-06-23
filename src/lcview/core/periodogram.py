@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 import numpy as np
+from scipy.ndimage import median_filter
 
 from lcview.native.build import NativeBuildError, ensure_native
 from .lightcurve import LightCurve, from_array
@@ -23,6 +24,7 @@ class PeriodogramResult:
     peaks: list[dict]
     used_native: bool
     noise_level: float | None = None
+    local_noise: np.ndarray | None = None
 
     @property
     def best_frequency(self) -> float:
@@ -33,6 +35,30 @@ class PeriodogramResult:
         else:
             idx = int(np.argmax(self.amplitude))
         return float(self.frequency[idx])
+
+    def noise_spectrum(self, *, adaptive: bool = True) -> np.ndarray | None:
+        if adaptive and self.local_noise is not None and len(self.local_noise) == len(self.amplitude):
+            return np.asarray(self.local_noise, dtype=float)
+        if self.noise_level is None or not np.isfinite(self.noise_level) or self.noise_level <= 0:
+            return None
+        return np.full_like(self.amplitude, float(self.noise_level), dtype=float)
+
+    def snr_spectrum(self, *, adaptive: bool = True) -> np.ndarray | None:
+        noise = self.noise_spectrum(adaptive=adaptive)
+        if noise is None:
+            return None
+        denominator = np.clip(np.asarray(noise, dtype=float), np.finfo(float).tiny, None)
+        return np.asarray(self.amplitude, dtype=float) / denominator
+
+    def snr_at_frequency(self, frequency: float, *, adaptive: bool = True) -> float | None:
+        snr = self.snr_spectrum(adaptive=adaptive)
+        if snr is None or len(self.frequency) == 0:
+            return None
+        index = nearest_frequency_index(self.frequency, frequency)
+        if index is None:
+            return None
+        value = float(snr[index])
+        return value if np.isfinite(value) else None
 
 
 def dft_step(precision: float, baseline: float) -> float:
@@ -97,6 +123,32 @@ def _mean_positive(values: np.ndarray) -> float | None:
     return float(np.mean(finite))
 
 
+def _local_noise_window_size(point_count: int) -> int:
+    if point_count <= 0:
+        return 1
+    window = max(51, point_count // 40)
+    window = min(window, 2001)
+    if window % 2 == 0:
+        window += 1
+    if window > point_count:
+        window = point_count if point_count % 2 == 1 else max(1, point_count - 1)
+    return max(1, window)
+
+
+def estimate_local_noise(amplitude: np.ndarray) -> np.ndarray | None:
+    values = np.asarray(amplitude, dtype=float)
+    if values.size == 0:
+        return np.empty(0, dtype=float)
+    baseline_noise = _median_positive(values)
+    if baseline_noise is None:
+        return None
+    window = _local_noise_window_size(len(values))
+    sanitized = np.where(np.isfinite(values) & (values > 0), values, baseline_noise)
+    filtered = np.asarray(median_filter(sanitized, size=window, mode="nearest"), dtype=float)
+    floor = max(np.finfo(float).tiny, float(baseline_noise) * 1e-6)
+    return np.clip(filtered, floor, None)
+
+
 def _noise_from_peaks(peaks: list[dict]) -> float | None:
     ratios = []
     for peak in peaks:
@@ -119,17 +171,94 @@ def _local_peaks(frequency: np.ndarray, amplitude: np.ndarray, limit: int = 50) 
     if indexes.size == 0:
         indexes = np.array([int(np.argmax(amplitude))])
     ranked = indexes[np.argsort(amplitude[indexes])[::-1]][:limit]
-    noise = _median_positive(amplitude) or 1.0
     return [
         {
             "index": int(i),
             "frequency": float(frequency[i]),
             "period": float(1.0 / frequency[i]) if frequency[i] else math.inf,
             "amplitude": float(amplitude[i]),
-            "snr": float(amplitude[i] / noise),
         }
         for i in ranked
     ]
+
+
+def nearest_frequency_index(frequency_grid: np.ndarray, target_frequency: float) -> int | None:
+    frequencies = np.asarray(frequency_grid, dtype=float)
+    if frequencies.size == 0 or not np.isfinite(target_frequency):
+        return None
+    index = int(np.searchsorted(frequencies, target_frequency, side="left"))
+    if index <= 0:
+        return 0
+    if index >= len(frequencies):
+        return len(frequencies) - 1
+    before = index - 1
+    return before if abs(frequencies[before] - target_frequency) <= abs(frequencies[index] - target_frequency) else index
+
+
+def _annotate_peak_statistics(
+    frequency: np.ndarray,
+    amplitude: np.ndarray,
+    peaks: list[dict],
+    *,
+    global_noise: float | None,
+    local_noise: np.ndarray | None,
+) -> list[dict]:
+    annotated: list[dict] = []
+    for peak in peaks:
+        try:
+            peak_frequency = float(peak.get("frequency"))
+            peak_amplitude = float(peak.get("amplitude"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if not (np.isfinite(peak_frequency) and np.isfinite(peak_amplitude) and peak_amplitude > 0):
+            continue
+        row = dict(peak)
+        if global_noise is not None and np.isfinite(global_noise) and global_noise > 0:
+            row["global_noise"] = float(global_noise)
+            row["global_snr"] = float(peak_amplitude / global_noise)
+        if local_noise is not None and len(local_noise) == len(frequency):
+            local_index = nearest_frequency_index(frequency, peak_frequency)
+            if local_index is not None:
+                local_value = float(local_noise[local_index])
+                if np.isfinite(local_value) and local_value > 0:
+                    row["local_noise"] = local_value
+                    row["local_snr"] = float(peak_amplitude / local_value)
+        if "local_snr" in row:
+            row["noise"] = row.get("local_noise")
+            row["snr"] = row["local_snr"]
+        elif "global_snr" in row:
+            row["noise"] = row.get("global_noise")
+            row["snr"] = row["global_snr"]
+        annotated.append(row)
+    return annotated
+
+
+def compute_spectral_window(
+    light_curve: LightCurve,
+    frequency: np.ndarray,
+    *,
+    max_points: int = 5000,
+    chunk_size: int = 256,
+) -> tuple[np.ndarray, np.ndarray]:
+    frequencies = np.asarray(frequency, dtype=float)
+    finite_indexes = np.flatnonzero(np.isfinite(frequencies))
+    if finite_indexes.size == 0:
+        return np.empty(0, dtype=float), np.empty(0, dtype=float)
+    if finite_indexes.size > max_points:
+        sampled_positions = np.unique(np.linspace(0, finite_indexes.size - 1, max_points, dtype=int))
+        indexes = finite_indexes[sampled_positions]
+    else:
+        indexes = finite_indexes
+    sampled_frequency = frequencies[indexes]
+    evaluation_frequency = np.concatenate(([0.0], sampled_frequency))
+    centered_time = np.asarray(light_curve.centered_time().time, dtype=float)
+    response = np.empty_like(evaluation_frequency)
+    for start in range(0, len(evaluation_frequency), max(1, int(chunk_size))):
+        stop = min(len(evaluation_frequency), start + max(1, int(chunk_size)))
+        angle = 2.0 * np.pi * evaluation_frequency[start:stop, None] * centered_time[None, :]
+        response[start:stop] = np.hypot(np.mean(np.cos(angle), axis=1), np.mean(np.sin(angle), axis=1))
+    normalizer = max(np.finfo(float).tiny, float(response[0]))
+    return sampled_frequency, np.asarray(response[1:] / normalizer, dtype=float)
 
 
 ProgressCallback = Callable[[int, str], None]
@@ -240,12 +369,21 @@ def _python_periodogram(
             _report(progress_callback, percent, "Calculating DFT")
     _report(progress_callback, 99, "DFT output ready")
     noise = _median_positive(amplitudes)
-    return PeriodogramResult(
+    local_noise = estimate_local_noise(amplitudes)
+    peaks = _annotate_peak_statistics(
         frequencies,
         amplitudes,
         _local_peaks(frequencies, amplitudes),
+        global_noise=noise,
+        local_noise=local_noise,
+    )
+    return PeriodogramResult(
+        frequencies,
+        amplitudes,
+        peaks,
         used_native=False,
         noise_level=noise,
+        local_noise=local_noise,
     )
 
 
@@ -309,9 +447,17 @@ def compute_periodogram(
             _report(progress_callback, 98, "Reading fwpeaks output")
             freq, amp = _parse_trf(trf)
             peaks = _parse_max(max_file, start, end) or _local_peaks(freq, amp)
-            noise = _noise_from_peaks(peaks) or _mean_positive(amp)
+            noise = _noise_from_peaks(peaks) or _median_positive(amp) or _mean_positive(amp)
+            local_noise = estimate_local_noise(amp)
+            peaks = _annotate_peak_statistics(
+                freq,
+                amp,
+                peaks,
+                global_noise=noise,
+                local_noise=local_noise,
+            )
             _report(progress_callback, 99, "DFT output ready")
-            return PeriodogramResult(freq, amp, peaks, used_native=True, noise_level=noise)
+            return PeriodogramResult(freq, amp, peaks, used_native=True, noise_level=noise, local_noise=local_noise)
     except (NativeBuildError, subprocess.CalledProcessError, OSError, ValueError, RuntimeError) as exc:
         try:
             message = str(exc)

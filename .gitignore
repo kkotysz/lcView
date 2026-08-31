@@ -9,3 +9,6 @@ dist/
 *.egg-info/
 .lcview/
 src/lcview/native/_build/
+.idea/
+.vscode/
+.DS_Store

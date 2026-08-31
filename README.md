@@ -1,22 +1,49 @@
-# lcView
+# lcView — Light-Curve Analysis Workbench
 
-lcView is now packaged as a PySide6 application with a Python prewhitening backend.
-The legacy PyQt5 scripts are kept in `scripts/`, while the new application lives in
-`src/lcview`.
+[![CI](https://github.com/kkotysz/lcView/actions/workflows/ci.yml/badge.svg)](https://github.com/kkotysz/lcView/actions/workflows/ci.yml)
+
+A desktop and command-line scientific application for **time-series analysis of astronomical light curves**, with interactive DFT inspection, iterative prewhitening, phase analysis, detrending, sigma clipping and model fitting.
+
+The current application is built with `Python`, `PySide6`, `NumPy`, `SciPy`, `Pandas`, `Astropy` and `pyqtgraph`, while selected numerical routines are provided by bundled **C and Fortran legacy engines** that are compiled on demand.
+
+## Engineering highlights
+
+lcView is also a modernization project: it takes an older collection of research scripts and native numerical tools and turns them into a structured, testable Python application.
+
+- **Scientific computing** — periodograms, frequency modelling, prewhitening, phase folding, detrending and time-dependent frequency analysis.
+- **Legacy modernization** — older PyQt5 scripts are retained for reference while the maintained application lives in a modern `src/` package layout.
+- **Python + native-code integration** — bundled C and Fortran routines are compiled automatically into a user cache and used as numerical backends.
+- **GUI + CLI workflows** — interactive PySide6 workbench plus a batch `lcview-prewhiten` command.
+- **Reproducible packaging** — `pyproject.toml`, console entry points and a documented Conda environment.
+- **Automated tests** — unit tests cover core numerical logic, file loading, UI models and smoke-level GUI workflows.
+- **Multiple input formats** — whitespace-separated, CSV, TSV and semicolon-separated light curves with automatic or interactive column selection.
+
+## Architecture
+
+The maintained implementation is split into several layers:
+
+```text
+src/lcview/core/      scientific and time-series algorithms
+src/lcview/ui/        PySide6 interface
+src/lcview/native/    C and Fortran numerical engines + build helper
+src/lcview/legacy/    compatibility/parsing support
+tests/                numerical, parsing and UI tests
+scripts/              original/legacy research scripts
+```
+
+This separation makes it possible to test scientific logic independently of the GUI while still preserving and integrating trusted legacy routines.
 
 ## Installation
 
 ```bash
-# from a fresh clone
-git clone <repo-url> lcView
+git clone https://github.com/kkotysz/lcView.git
 cd lcView
-
-# create the conda environment and install lcView in editable mode
 conda env create -f lcView-env.yml
 conda activate lcView-env
+pip install -e .
 ```
 
-If the environment already exists, update it instead:
+If the environment already exists:
 
 ```bash
 conda activate lcView-env
@@ -24,93 +51,105 @@ conda env update -f lcView-env.yml --prune
 pip install -e .
 ```
 
-The environment installs `PySide6`, `pyqtgraph`, scientific Python dependencies,
-`pytest`, and conda-forge C/Fortran compilers used to build the native legacy
-engines.
-
 ## Running
 
-Start the GUI from the repository root:
+Launch the GUI:
+
+```bash
+lcview
+```
+
+Open a light curve directly:
+
+```bash
+lcview path/to/lightcurve.dat
+```
+
+Batch prewhitening:
+
+```bash
+lcview-prewhiten path/to/lightcurve.dat \
+  --start 0 --end 80 --precision 10 --export output/
+```
+
+The repository also includes a convenience launcher:
 
 ```bash
 ./lcView.sh
 ```
 
-or, after activating the environment:
+## Native numerical backends
 
-```bash
-lcview
-lcview path/to/lightcurve.dat
+The bundled native tools include:
+
+- `fwpeaks`
+- `hars-sin`
+- `hars-ite`
+- `smart-uf-fina-smars`
+- `uf2`
+
+They are compiled automatically into:
+
+```text
+~/.cache/lcview/native
 ```
 
-Input light curves may be whitespace-separated, CSV, TSV, or semicolon-separated.
-Files with headers are supported, including comment headers like `# time mag err`.
-When a GUI-loaded file has more than three columns, lcView asks which columns to
-use for time, flux/magnitude, and error.
-
-The bundled native tools (`fwpeaks`, `hars-sin`, `hars-ite`, `smart-uf-fina-smars`,
-`uf2`) are compiled automatically into `~/.cache/lcview/native` when first needed.
-You can force a rebuild from the GUI menu or with:
+A rebuild can be triggered manually with:
 
 ```bash
 python -m lcview.native.build
 ```
 
-Batch prewhitening mode:
-
-```bash
-lcview-prewhiten path/to/lightcurve.dat --start 0 --end 80 --precision 10 --export output/
-```
-
-DFT uses native `fwpeaks` by default. The slower Python DFT implementation is never
-used as an implicit fallback; select it explicitly only when needed:
+DFT uses the native `fwpeaks` backend by default. A slower Python implementation can be selected explicitly:
 
 ```bash
 lcview --dft-backend python path/to/lightcurve.dat
 lcview-prewhiten --dft-backend python path/to/lightcurve.dat
 ```
 
-## GUI Workflow Notes
+## Main analysis workflow
 
-- `Fit model` updates residuals at the accepted frequencies without recomputing the DFT.
-- Adding a frequency from `Current peak candidates` runs fit and then refreshes the residual DFT automatically.
-- In `Accepted frequencies`, double-click an editable `Frequency` or `Period` cell to change a base frequency.
-- Use `Calculate DFT` to refresh the residual periodogram and repopulate peak candidates.
-- The DFT tab can show a dashed global `5 S/N` amplitude threshold, accepted/peak markers, and optional daily/yearly alias markers.
-- Use `Mag axis` on the Light curve tab to invert brightness plots for magnitude data; calculations still use original values.
-- Use `Refine frequencies` only when you explicitly want slower nonlinear frequency optimization.
-- On the Phase tab, `Sin/cos fit` overlays the fitted Fourier model parameters and includes accepted harmonic terms automatically.
-- In `Frequency views`, phase controls are available in the tab and `Sin/cos fit` overlays the same Fourier model on both the time plot and folded phase plot.
-- `Sigma clip` opens a preview dialog; confirm or uncheck individual proposed rejected points before applying it.
-- In the sigma-clipping preview, drag a rectangle on the plot to mass-mark points using `Box: reject` or `Box: keep`.
+The application supports an iterative workflow commonly used for variable-star and pulsation analysis:
 
-## Checking the Install
+1. load and inspect a light curve,
+2. calculate the DFT/periodogram,
+3. inspect candidate peaks and S/N,
+4. accept or edit frequencies,
+5. fit the multi-frequency model,
+6. inspect residuals,
+7. recalculate the residual DFT,
+8. analyse phase curves and frequency combinations.
+
+Additional tools include sigma clipping, detrending, harmonic terms, daily/yearly alias markers and time-dependent frequency analysis.
+
+## Input handling
+
+Supported input formats include:
+
+- whitespace-separated text,
+- CSV,
+- TSV,
+- semicolon-separated files.
+
+Headered files are supported. When a file contains more than three candidate data columns, the GUI asks the user to select time, flux/magnitude and uncertainty columns.
+
+## Tests
+
+Run the test suite with:
 
 ```bash
-conda activate lcView-env
-PYTHONPATH=src pytest -q
+python -m pip install -e '.[dev]'
+pytest -q
+```
+
+A compile-only sanity check is also useful:
+
+```bash
 python -m compileall -q src
 ```
 
-To run lcView from any directory without activating the environment first, place
-a launcher somewhere in your `PATH`. This uses the entry point installed inside
-the conda environment directly, so it is faster than wrapping `conda run`:
+The test suite includes numerical tests for frequency models and prewhitening as well as parsing, UI-model and GUI smoke tests.
 
-```bash
-mkdir -p ~/bin
-LCVIEW_BIN="$(conda run -n lcView-env which lcview | tail -n 1)"
-printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$LCVIEW_BIN" > ~/bin/lcview
-chmod +x ~/bin/lcview
-```
+## Project status
 
-Make sure `~/bin` is in your shell `PATH`, for example in `~/.zshrc`:
-
-```bash
-export PATH="$HOME/bin:$PATH"
-```
-
-## Troubleshooting
-
-- If the GUI opens without plots, make sure `pyqtgraph` is installed in the active environment.
-- If prewhitening fails with a native build error, run `python -m lcview.native.build` and check that conda-forge `c-compiler` and `fortran-compiler` are installed.
-- If command-line entry points are missing, rerun `pip install -e .` inside `lcView-env`.
+lcView is an actively maintained scientific-software project focused on turning practical astronomical analysis workflows and established legacy numerical code into a cleaner, reusable and testable application.

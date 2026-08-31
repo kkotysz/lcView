@@ -39,14 +39,14 @@ This separation makes it possible to test scientific logic independently of the 
 git clone https://github.com/kkotysz/lcView.git
 cd lcView
 conda env create -f lcView-env.yml
-conda activate lcView
+conda activate lcView-env
 pip install -e .
 ```
 
 If the environment already exists:
 
 ```bash
-conda activate lcView
+conda activate lcView-env
 conda env update -f lcView-env.yml --prune
 pip install -e .
 ```
